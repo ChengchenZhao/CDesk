@@ -1,0 +1,2 @@
+Rscript QualityControl.r
+Rscript QualityControl.PluripotentGenes.r
