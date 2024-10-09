@@ -1,0 +1,181 @@
+#!/bin/bash
+
+# Description : ATAC-seq data analysis pipeline.
+# Author      : Chengchen Zhao
+# Version     : 1.2
+# Time        : 2022-11-21 20:26:10
+
+####################################################################################################
+#################################     PARAMETER/FUNCTION DEFINE     ################################
+####################################################################################################
+data_path=${1} # /data/zhaochengchen/bin/pipeline
+result_path=${2} # /data/zhaochengchen/bin/pipeline/ATAC
+out_name=${3} # ATAC_test_single
+
+layout=${4} # single/pair
+fastq_file=${5} # "YourFastqFile.fastq.gz" for single-end
+                # "YourFastqFile_R1.fastq.gz,YourFastqFile_R2.fastq.gz" for pair-end
+
+mapping_index=${6} # /data/zhaochengchen/Data/mm9/mm9
+species=${7} # mm
+promoter_file=${8} # /data/zhaochengchen/Data/mm9/mm9.refseq.Promoter
+chromInfo=${9} # /data/zhaochengchen/Data/mm9/mm9.len
+
+echo "--------------------------------------------------------------------------------" 
+if [ ! -n "${9}" ]
+then 
+    echo "Parameters are missing, please check your input." 
+    exit 2
+else 
+    echo "ATAC-seq data analysis pipeline is now running..." 
+fi 
+
+
+log_path=${result_path}/log
+bam_path=${result_path}/bam
+bw_path=${result_path}/bw
+peak_path=${result_path}/peak
+
+####################################################################################################
+#################################          ANALYSIS STEPS           ################################
+####################################################################################################
+
+if [ ! -d "${result_path}" ]; then
+  mkdir ${result_path}
+fi
+if [ ! -d "${log_path}" ]; then
+  mkdir ${log_path}
+fi
+if [ ! -d "${bam_path}" ]; then
+  mkdir ${bam_path}
+fi
+if [ ! -d "${bw_path}" ]; then
+  mkdir ${bw_path}
+fi
+if [ ! -d "${peak_path}" ]; then
+  mkdir ${peak_path}
+fi
+if [ ! -d "${result_path}/${out_name}" ]; then
+  mkdir ${result_path}/${out_name}
+fi
+if [ ! -d "${log_path}/${out_name}" ]; then
+  mkdir ${log_path}/${out_name}
+fi
+
+
+# 1.mapping ----------------------------------------------------------------------------------------
+echo "1.mapping..."
+if [ "${layout}" == "single" ]
+then
+    nohup trim_galore --gzip -j 4 ${data_path}/${fastq_file} --trim-n -o ${result_path} --no_report_file --basename ${out_name} > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    bowtie2 -q -p 20 -x ${mapping_index} -U ${result_path}/${out_name}_trimmed.fq.gz -S ${result_path}/${out_name}/${out_name}.align.sam > ${log_path}/${out_name}/${out_name}.Mapping.log 2>&1
+    rm -rf ${result_path}/${out_name}_trimmed.fq.gz
+
+    samtools view -@ 20 -bS ${result_path}/${out_name}/${out_name}.align.sam > ${result_path}/${out_name}/${out_name}.bam
+    samtools sort -@ 20 ${result_path}/${out_name}/${out_name}.bam > ${bam_path}/${out_name}.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.align.sam ${result_path}/${out_name}/${out_name}.bam
+    # chromosome distribution
+    samtools view -@ 20 ${bam_path}/${out_name}.bam | awk '/^[^#]/ {print $3}' | sort | uniq -c | sort -k1,1rg | awk 'BEGIN{print "chromosome\tnumber"} {print $2"\t"$1}' > ${result_path}/${out_name}/${out_name}.ChromosomeDistribution.txt
+    samtools view -@ 20 -F 0x400 ${bam_path}/${out_name}.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr") print $3}' | sort | uniq -c | sort -k1,1rg | awk 'BEGIN{print "chromosome\tnumber"} {print $2"\t"$1}' > ${result_path}/${out_name}/${out_name}.Filtered.ChromosomeDistribution.txt
+    # filtering
+    samtools view -@ 20 -H ${bam_path}/${out_name}.bam > ${bam_path}/${out_name}.Filtered.sam
+    samtools view -@ 20 -F 0x400 ${bam_path}/${out_name}.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.Filtered.sam
+    samtools view -@ 20 -bS ${bam_path}/${out_name}.Filtered.sam > ${bam_path}/${out_name}.Filtered.bam
+    rm ${bam_path}/${out_name}.Filtered.sam 
+
+    bamToBed -i ${bam_path}/${out_name}.Filtered.bam > ${result_path}/${out_name}/${out_name}.tmp.bed
+    bedSort ${result_path}/${out_name}/${out_name}.tmp.bed ${result_path}/${out_name}/${out_name}.bed
+    n=`wc -l ${result_path}/${out_name}/${out_name}.bed | cut -f 1 -d " "`
+    c=`bc -l <<< "1000000 / $n"` 
+    genomeCoverageBed -bga -scale $c -i ${result_path}/${out_name}/${out_name}.bed -g ${chromInfo} > ${result_path}/${out_name}/${out_name}.bdg 
+    bedClip ${result_path}/${out_name}/${out_name}.bdg ${chromInfo} ${result_path}/${out_name}/${out_name}.Clip.bdg
+    bedSort ${result_path}/${out_name}/${out_name}.Clip.bdg ${result_path}/${out_name}/${out_name}.bdg.temp
+    bedGraphToBigWig ${result_path}/${out_name}/${out_name}.bdg.temp ${chromInfo} ${bw_path}/${out_name}.bw
+    rm ${result_path}/${out_name}/${out_name}.bdg
+    rm ${result_path}/${out_name}/${out_name}.bdg.temp
+    rm ${result_path}/${out_name}/${out_name}.Clip.bdg
+    rm ${result_path}/${out_name}/${out_name}.tmp.bed
+
+    bedToBigBed ${result_path}/${out_name}/${out_name}.bed ${chromInfo} ${result_path}/${out_name}/${out_name}.bb
+
+elif [ "${layout}" == "pair" ]
+then
+    IFS=','
+    read -ra fastq_file_arr <<< "${fastq_file}"
+    nohup trim_galore --gzip -j 4 --paired ${data_path}/${fastq_file_arr[0]} ${data_path}/${fastq_file_arr[1]} --trim-n -o ${result_path} --no_report_file --basename ${out_name} > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    bowtie2 -q -p 20 -x ${mapping_index} -1 ${result_path}/${out_name}_val_1.fq.gz -2 ${result_path}/${out_name}_val_2.fq.gz -S ${result_path}/${out_name}/${out_name}.align.sam > ${log_path}/${out_name}/${out_name}.Mapping.log 2>&1
+    rm -rf ${result_path}/${out_name}_val_1.fq.gz ${result_path}/${out_name}_val_2.fq.gz
+    
+    samtools view -@ 20 -bS ${result_path}/${out_name}/${out_name}.align.sam > ${result_path}/${out_name}/${out_name}.bam
+    samtools sort -@ 20 ${result_path}/${out_name}/${out_name}.bam > ${bam_path}/${out_name}.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.align.sam ${result_path}/${out_name}/${out_name}.bam
+    # chromosome distribution
+    samtools view -@ 20 ${bam_path}/${out_name}.bam | awk '/^[^#]/ {print $3}' | sort | uniq -c | sort -k1,1rg | awk 'BEGIN{print "chromosome\tnumber"} {print $2"\t"$1}' > ${result_path}/${out_name}/${out_name}.ChromosomeDistribution.txt
+    samtools view -@ 20 -f 0x2 ${bam_path}/${out_name}.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr") print $3}' | sort | uniq -c | sort -k1,1rg | awk 'BEGIN{print "chromosome\tnumber"} {print $2"\t"$1}' > ${result_path}/${out_name}/${out_name}.Filtered.ChromosomeDistribution.txt
+    # filtering
+    samtools view -@ 20 -H ${bam_path}/${out_name}.bam > ${bam_path}/${out_name}.Filtered.sam
+    samtools view -@ 20 -f 0x2 ${bam_path}/${out_name}.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.Filtered.sam
+    samtools view -@ 20 -bS ${bam_path}/${out_name}.Filtered.sam > ${bam_path}/${out_name}.Filtered.bam
+    rm ${bam_path}/${out_name}.Filtered.sam 
+
+    bamToBed -i ${bam_path}/${out_name}.Filtered.bam > ${result_path}/${out_name}/${out_name}.RawReads.bed
+    samtools sort -n -@ 20 ${bam_path}/${out_name}.Filtered.bam > ${bam_path}/${out_name}.FilteredSorted.bam
+    rm ${bam_path}/${out_name}.Filtered.bam
+    nohup bamToBed -bedpe -i ${bam_path}/${out_name}.FilteredSorted.bam | awk '{print $1"\t"$2"\t"$6}' | sort -k1,1 -k2,2n | uniq | grep -v WARNING > ${result_path}/${out_name}/${out_name}.Fragments.bed
+    awk '{print $3-$2}' ${result_path}/${out_name}/${out_name}.Fragments.bed | sort | uniq -c | sort -k2,2g | awk 'BEGIN{print "fragment_length\tnumber"} {print $2"\t"$1}' > ${result_path}/${out_name}/${out_name}.FragmentsLength.txt
+
+    # awk 'BEGIN{srand(100)} {if(rand()<0.5) print $1"\t"$2"\t"$2+50; else if($3-50<0) print $1"\t0\t"$3; else print $1"\t"$3-50"\t"$3}' ${result_path}/${out_name}/${out_name}.Fragments.bed | awk '{if($2<0) print $1"\t0\t"$3; else print $0}' | sort -k1,1 -k2,2g > ${result_path}/${out_name}/${out_name}.bed
+    # n=`wc -l ${result_path}/${out_name}/${out_name}.bed | cut -f 1 -d " "`
+    # c=`bc -l <<< "1000000 / $n"` 
+    # genomeCoverageBed -bga -scale $c -i ${result_path}/${out_name}/${out_name}.bed -g ${chromInfo} > ${result_path}/${out_name}/${out_name}.bdg
+    # bedClip ${result_path}/${out_name}/${out_name}.bdg ${chromInfo} ${result_path}/${out_name}/${out_name}.Clip.bdg
+    # bedSort ${result_path}/${out_name}/${out_name}.Clip.bdg ${result_path}/${out_name}/${out_name}.bdg.temp
+    # bedGraphToBigWig ${result_path}/${out_name}/${out_name}.bdg.temp ${chromInfo} ${bw_path}/${out_name}.bw
+    # rm ${result_path}/${out_name}/${out_name}.bdg
+    # rm ${result_path}/${out_name}/${out_name}.bdg.temp
+    # rm ${result_path}/${out_name}/${out_name}.Clip.bdg
+    # bedSort ${result_path}/${out_name}/${out_name}.bed ${result_path}/${out_name}/${out_name}Sorted.bed
+    
+    bedSort ${result_path}/${out_name}/${out_name}.Fragments.bed ${result_path}/${out_name}/${out_name}.bed
+    n=`wc -l ${result_path}/${out_name}/${out_name}.bed | cut -f 1 -d " "`
+    c=`bc -l <<< "1000000 / $n"`
+    genomeCoverageBed -bga -scale $c -i ${result_path}/${out_name}/${out_name}.bed -g ${chromInfo} > ${result_path}/${out_name}/${out_name}.bdg
+    bedClip ${result_path}/${out_name}/${out_name}.bdg ${chromInfo} ${result_path}/${out_name}/${out_name}.Clip.bdg
+    bedSort ${result_path}/${out_name}/${out_name}.Clip.bdg ${result_path}/${out_name}/${out_name}.bdg.temp
+    bedGraphToBigWig ${result_path}/${out_name}/${out_name}.bdg.temp ${chromInfo} ${bw_path}/${out_name}.bw
+    rm ${result_path}/${out_name}/${out_name}.bdg
+    rm ${result_path}/${out_name}/${out_name}.bdg.temp
+    rm ${result_path}/${out_name}/${out_name}.Clip.bdg
+
+    bedToBigBed ${result_path}/${out_name}/${out_name}.bed ${chromInfo} ${result_path}/${out_name}/${out_name}.bb
+
+else
+    echo "The experiment layout should be either 'single' end or 'pair' end."
+fi
+
+# 2.peak calling -----------------------------------------------------------------------------
+echo "2.peak calling..."
+
+# keep all is beacause the each bed file have been uniqued then merge. The "keep-all" parameter means the reads from different replicates are keeped.
+# single-end input : reads in + and reads in - would be shifted by macs14
+# macs14 -t ${result_path}/${out_name}/${out_name}.bed -n ${peak_path}/${out_name} -f BED -g ${species} --keep-dup all --nomodel --shiftsize 25  > ${log_path}/${out_name}/${out_name}.PeakCalling.log 2>&1
+
+macs14 -t ${result_path}/${out_name}/${out_name}.bed -n ${peak_path}/${out_name}_e3 -f BED -g ${species} --keep-dup all --nomodel --shiftsize 25 -p 1e-3 > ${log_path}/${out_name}/${out_name}_e3.PeakCalling.log 2>&1
+macs14 -t ${result_path}/${out_name}/${out_name}.bed -n ${peak_path}/${out_name}_e5 -f BED -g ${species} --keep-dup all --nomodel --shiftsize 25 -p 1e-5 > ${log_path}/${out_name}/${out_name}_e5.PeakCalling.log 2>&1
+macs14 -t ${result_path}/${out_name}/${out_name}.bed -n ${peak_path}/${out_name}_e7 -f BED -g ${species} --keep-dup all --nomodel --shiftsize 25 -p 1e-7 > ${log_path}/${out_name}/${out_name}_e7.PeakCalling.log 2>&1
+
+# cut -f 8 ${peak_path}/${out_name}_peaks.xls | grep -v "#" > ${peak_path}/${out_name}.PeakFoldEnrichment.txt
+# Rscript PeakFoldEnrichmentDistribution.r ${peak_path}/${out_name}.PeakFoldEnrichment.txt ${peak_path}/${out_name}
+# awk -v "OFS=\t" '{if ($8 > 5 && substr($1,1,3) == "chr" && $1 != "chr") printf ("%s\t%d\t%d\tmacspeak_%d\n",$1,$2-1,$3,NR)}' ${peak_path}/${out_name}_peaks.xls > ${peak_path}/${out_name}.FE5Peaks.bed
+# awk -v "OFS=\t" '{if ($8 > 5 && substr($1,1,3) == "chr" && $1 != "chr") printf ("%s\t%d\t%d\tmacspeak_%d\n",$1,$2-2+$5,$2-1+$5,NR)}' ${peak_path}/${out_name}_peaks.xls > ${peak_path}/${out_name}.FE5Summits.bed
+
+# 3.Promoter signal calculation ----------------------------------------------------------------------
+echo "3.Promoter signal calculation..."
+python3 /usr/local/bin/GetBigwigSignal.py ${promoter_file} ${bw_path}/${out_name}.bw ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp 1
+cut -f 5 ${promoter_file} | paste - ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp > ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2
+python3 /usr/local/bin/GeneSymbolUniq.py ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2 ${result_path}/${out_name}/${out_name}.PromoterSignal 0
+rm ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp
+rm ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2
+
+echo "Done!"
+echo "--------------------------------------------------------------------------------" 
