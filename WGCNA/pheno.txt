@@ -1,0 +1,5 @@
+id	condition
+scPDd15.5	3D
+scPDd25.5	3D
+scwoPDd15.5	2D
+scwoPDd25.5	2D
