@@ -1,6 +1,12 @@
 #! /usr/bin/bash
 
-#!/bin/bash
+
+
+# Description : Detect the differentail splicing events by rMATs based on the bam files. 
+# Author      : Zheting Zhang
+# Time        : 2024-11-17
+
+
 
 # Function to display help
 
