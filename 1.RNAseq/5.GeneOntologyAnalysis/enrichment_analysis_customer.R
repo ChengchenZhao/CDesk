@@ -1,3 +1,11 @@
+#! /usr/bin/Rscript
+
+
+# Description : Perform the enrichment analysis based on the customization gene sets
+# Author      : Zheting Zhang
+# Time        : 2024-11-17 
+
+
 # 检测并安装必要的包
 
 packages <- c( "ggplot2","clusterProfiler")

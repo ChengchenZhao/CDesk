@@ -1,3 +1,13 @@
+#! /usr/bin/Rscript
+
+
+
+# Description : Perform the GO/KEGG enrichment analysis based on the pubsihed GO/KEGG gene sets
+# Author      : Zheting Zhang
+# Time        : 2024-11-17
+
+
+
 # 检测并安装必要的包
 
 packages <- c("BiocManager", "clusterProfiler", "org.Hs.eg.db", "org.Rn.eg.db", "org.Mm.eg.db", "org.Gg.eg.db", "org.Ss.eg.db", "enrichplot", "ggplot2","clusterProfiler")
