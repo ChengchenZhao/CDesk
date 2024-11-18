@@ -15,7 +15,7 @@ Now you can easily use this script by following the commands below in the termin
 
 | 参数         | 描述                                                 | 默认值    |
 |--------------|-----------------------------------------------------|-----------|
-| ``           | deseq2 gfold or adjust_t                            | /         |
+|              | deseq2 gfold or adjust_t                            | /         |
 | `--input`    | Input count matrix for DESeq2/adjusted t-test<br> or Input bam file directory for GFOLD                      | /         |
 | `--output_dir` | Directory for saving output                       | /         |
 | `--species`  | Species for choosing .gtf for mapping gene id to gene name | `mouse`       |
