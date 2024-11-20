@@ -1,6 +1,11 @@
 #! /usr/bin/bash
 
-#!/bin/bash
+# Description : Draw the sashimi plot to visualize the differential splicing events based on the bam files.
+# Author      : Zheting Zhang
+# Time        : 2024-11-17
+
+
+
 
 # Function to display help
 
