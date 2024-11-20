@@ -1,0 +1,2 @@
+#! python
+gseapy gsea -d "/mnt/yutiancheng/CDesk/CDesk/1.RNAseq/GSEApy/tests/extdata/Leukemia_hgu95av2.trim.txt" -c "/mnt/yutiancheng/CDesk/CDesk/1.RNAseq/GSEApy/tests/extdata/Leukemia.cls" -g "/mnt/yutiancheng/CDesk/CDesk/1.RNAseq/GSEApy/tests/extdata/h.all.v7.0.symbols.gmt" -o test_gsea
