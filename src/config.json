@@ -1,0 +1,14 @@
+{
+    "database_host": "127.0.0.1",
+    "database_user": "root",
+    "database_pwd": "11223344",
+    "database_port": 3306,
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379,
+    "redis_pool_max_connections": 32,
+    "expire_time": 259200,
+    "login_url": "/login",
+    "index_url": "/index",
+    "change_file": "/mnt/runtask/CDesk/src/Tasks/__init__.py",
+    "index_table_statistics_file": "/mnt/runtask/CDesk/src/Tasks/mouse_statistics.txt"
+}

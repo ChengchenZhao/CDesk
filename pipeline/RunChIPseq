@@ -1,0 +1,223 @@
+#!/bin/bash
+
+# Description : ChIP-seq data analysis pipeline.
+# Author      : Chengchen Zhao
+# Version     : 1.0
+# Time        : 2021-07-13 13:29:19
+
+###################################################################################################
+################################     PARAMETER/FUNCTION DEFINE     ################################
+###################################################################################################
+
+data_path=${1} # /data/zhaochengchen/bin/pipeline
+result_path=${2} # /data/zhaochengchen/bin/pipeline/ChIPseq
+out_name=${3} # ChIPseq_test_single
+
+layout=${4} # single
+treat_fastq_file=${5} # "YourFastqFile.fastq.gz" for single-end
+                # "YourFastqFile_R1.fastq.gz,YourFastqFile_R2.fastq.gz" for pair-end
+ctrl_fastq_file=${6}
+
+mapping_index=${7} # /data/zhaochengchen/Data/mm9/mm9
+species=${8} # mm
+promoter_file=${9} # /data/zhaochengchen/Data/mm9/mm9.refseq.Promoter
+chromInfo=${10} # /data/zhaochengchen/Data/mm9/mm9.len
+
+echo "--------------------------------------------------------------------------------" 
+if [ ! -n "${10}" ]
+then 
+    echo "Parameters are missing, please check your input." 
+    exit 2
+else 
+    echo "ChIP-seq data analysis pipeline is now running..." 
+fi 
+
+
+log_path=${result_path}/log
+bam_path=${result_path}/bam
+bw_path=${result_path}/bw
+peak_path=${result_path}/peak
+
+####################################################################################################
+#################################          ANALYSIS STEPS           ################################
+####################################################################################################
+
+if [ ! -d "${result_path}" ]; then
+  mkdir ${result_path}
+fi
+if [ ! -d "${log_path}" ]; then
+  mkdir ${log_path}
+fi
+if [ ! -d "${bam_path}" ]; then
+  mkdir ${bam_path}
+fi
+if [ ! -d "${bw_path}" ]; then
+  mkdir ${bw_path}
+fi
+if [ ! -d "${peak_path}" ]; then
+  mkdir ${peak_path}
+fi
+if [ ! -d "${result_path}/${out_name}" ]; then
+  mkdir ${result_path}/${out_name}
+fi
+if [ ! -d "${log_path}/${out_name}" ]; then
+  mkdir ${log_path}/${out_name}
+fi
+
+
+# 1.mapping ----------------------------------------------------------------------------------------
+echo "1.mapping..."
+if [ "${layout}" == "single" ]
+then
+    nohup trim_galore --gzip -j 3 ${data_path}/${treat_fastq_file} --trim-n -o ${data_path} --no_report_file --basename ${out_name}_treat > ${log_path}/${out_name}/${out_name}.TreatTrimGalore.log 2>&1
+    nohup trim_galore --gzip -j 3 ${data_path}/${ctrl_fastq_file} --trim-n -o ${data_path} --no_report_file --basename ${out_name}_ctrl > ${log_path}/${out_name}/${out_name}.CtrlTrimGalore.log 2>&1
+    bowtie2 -q -p 10 -x ${mapping_index} -U ${data_path}/${out_name}_treat_trimmed.fq.gz -S ${result_path}/${out_name}/${out_name}.treat.sam > ${log_path}/${out_name}/${out_name}.TreatMapping.log 2>&1
+    bowtie2 -q -p 10 -x ${mapping_index} -U ${data_path}/${out_name}_ctrl_trimmed.fq.gz -S ${result_path}/${out_name}/${out_name}.ctrl.sam > ${log_path}/${out_name}/${out_name}.CtrlMapping.log 2>&1
+    rm -rf ${data_path}/${out_name}_treat_trimmed.fq.gz
+    rm -rf ${data_path}/${out_name}_ctrl_trimmed.fq.gz
+
+    samtools view -@ 5 -bS ${result_path}/${out_name}/${out_name}.treat.sam > ${result_path}/${out_name}/${out_name}.treat.bam
+    samtools sort -@ 5 ${result_path}/${out_name}/${out_name}.treat.bam > ${bam_path}/${out_name}.treat.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.treat.sam ${result_path}/${out_name}/${out_name}.treat.bam
+    samtools view -@ 5 -bS ${result_path}/${out_name}/${out_name}.ctrl.sam > ${result_path}/${out_name}/${out_name}.ctrl.bam
+    samtools sort -@ 5 ${result_path}/${out_name}/${out_name}.ctrl.bam > ${bam_path}/${out_name}.ctrl.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.ctrl.sam ${result_path}/${out_name}/${out_name}.ctrl.bam
+
+    # Remove duplicate reads
+    samtools view -@ 5 -H ${bam_path}/${out_name}.treat.bam > ${bam_path}/${out_name}.treat.Filtered.sam
+    samtools view -@ 5 -f 0x2 ${bam_path}/${out_name}.treat.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.treat.Filtered.sam
+    samtools view -@ 5 -bS ${bam_path}/${out_name}.treat.Filtered.sam > ${bam_path}/${out_name}.treat.Filtered.bam
+    rm ${bam_path}/${out_name}.treat.Filtered.sam 
+    samtools sort -@ 5 -n -o ${bam_path}/${out_name}.treat.Sort.bam ${bam_path}/${out_name}.treat.Filtered.bam
+    rm ${bam_path}/${out_name}.treat.Filtered.bam
+    samtools fixmate -@ 5 -m ${bam_path}/${out_name}.treat.Sort.bam ${bam_path}/${out_name}.treat.FixMate.bam
+    rm ${bam_path}/${out_name}.treat.Sort.bam
+    samtools sort -@ 5 -o ${bam_path}/${out_name}.treat.FixMateSorted.bam ${bam_path}/${out_name}.treat.FixMate.bam
+    rm ${bam_path}/${out_name}.treat.FixMate.bam
+    samtools markdup -@ 5 -r ${bam_path}/${out_name}.treat.FixMateSorted.bam ${bam_path}/${out_name}.treat.bam
+    rm ${bam_path}/${out_name}.treat.FixMateSorted.bam
+    
+    samtools view -@ 5 -H ${bam_path}/${out_name}.ctrl.bam > ${bam_path}/${out_name}.ctrl.Filtered.sam
+    samtools view -@ 5 -f 0x2 ${bam_path}/${out_name}.ctrl.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.ctrl.Filtered.sam
+    samtools view -@ 5 -bS ${bam_path}/${out_name}.ctrl.Filtered.sam > ${bam_path}/${out_name}.ctrl.Filtered.bam
+    rm ${bam_path}/${out_name}.ctrl.Filtered.sam 
+    samtools sort -@ 5 -n -o ${bam_path}/${out_name}.ctrl.Sort.bam ${bam_path}/${out_name}.ctrl.Filtered.bam
+    rm ${bam_path}/${out_name}.ctrl.Filtered.bam
+    samtools fixmate -@ 5 -m ${bam_path}/${out_name}.ctrl.Sort.bam ${bam_path}/${out_name}.ctrl.FixMate.bam
+    rm ${bam_path}/${out_name}.ctrl.Sort.bam
+    samtools sort -@ 5 -o ${bam_path}/${out_name}.ctrl.FixMateSorted.bam ${bam_path}/${out_name}.ctrl.FixMate.bam
+    rm ${bam_path}/${out_name}.ctrl.FixMate.bam
+    samtools markdup -@ 5 -r ${bam_path}/${out_name}.ctrl.FixMateSorted.bam ${bam_path}/${out_name}.ctrl.bam
+    rm ${bam_path}/${out_name}.ctrl.FixMateSorted.bam
+
+    # Generate bigwig file
+    macs3 pileup -f BAM -i ${bam_path}/${out_name}.treat.bam -o ${bam_path}/${out_name}.treat.bdg
+    grep -v "_" ${bam_path}/${out_name}.treat.bdg | grep -v "-" - | sort -k1,1 -k2,2n  > ${bam_path}/${out_name}.treat.tmp.bdg
+    bedClip ${bam_path}/${out_name}.treat.tmp.bdg ${chromInfo} ${bam_path}/${out_name}.treat.clean.bdg
+    bedGraphToBigWig ${bam_path}/${out_name}.treat.clean.bdg ${chromInfo} ${bw_path}/${out_name}.treat.Raw.bw
+    rm ${bam_path}/${out_name}.treat.bdg ${bam_path}/${out_name}.treat.tmp.bdg ${bam_path}/${out_name}.treat.clean.bdg
+
+    macs3 pileup -f BAM -i ${bam_path}/${out_name}.ctrl.bam -o ${bam_path}/${out_name}.ctrl.bdg
+    grep -v "_" ${bam_path}/${out_name}.ctrl.bdg | grep -v "-" - | sort -k1,1 -k2,2n  > ${bam_path}/${out_name}.ctrl.tmp.bdg
+    bedClip ${bam_path}/${out_name}.ctrl.tmp.bdg ${chromInfo} ${bam_path}/${out_name}.ctrl.clean.bdg
+    bedGraphToBigWig ${bam_path}/${out_name}.ctrl.clean.bdg ${chromInfo} ${bw_path}/${out_name}.ctrl.Raw.bw
+    rm ${bam_path}/${out_name}.ctrl.bdg ${bam_path}/${out_name}.ctrl.tmp.bdg ${bam_path}/${out_name}.ctrl.clean.bdg
+
+    TreatReadsNumber=`samtools view -c -F 260 ${bam_path}/${out_name}.treat.bam`
+    CtrlReadsNumber=`samtools view -c -F 260 ${bam_path}/${out_name}.ctrl.bam`
+    scaleFactor1=`bc -l <<< "1000000/${TreatReadsNumber}"`
+    scaleFactor2=`bc -l <<< "1000000/${CtrlReadsNumber}"`
+    bigwigCompare -b1 ${bw_path}/${out_name}.treat.Raw.bw -b2 ${bw_path}/${out_name}.ctrl.Raw.bw --scaleFactors ${scaleFactor1}:${scaleFactor2} --skipZeroOverZero --operation log2 -bs 10 -o ${bw_path}/${out_name}.bw -of bigwig
+    bigWigToBedGraph ${bw_path}/${out_name}.bw ${bw_path}/${out_name}.tmp.bdg
+    awk -v "OFS=\t" '{if ($4<0) print ($1,$2,$3,0);else print ($0)}' ${bw_path}/${out_name}.tmp.bdg > ${bw_path}/${out_name}.bdg
+    bedGraphToBigWig ${bw_path}/${out_name}.bdg ${chromInfo} ${bw_path}/${out_name}.bw
+    rm ${bw_path}/${out_name}.tmp.bdg ${bw_path}/${out_name}.bdg
+
+elif [ "${layout}" == "pair" ]
+then
+    IFS=','
+    read -ra fastq_file_arr1 <<< "${treat_fastq_file}"
+    nohup trim_galore --gzip -j 3 --paired ${data_path}/${fastq_file_arr1[0]} ${data_path}/${fastq_file_arr1[1]} --trim-n -o ${data_path} --no_report_file --basename ${out_name}_treat > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    IFS=','
+    read -ra fastq_file_arr2 <<< "${ctrl_fastq_file}"
+    nohup trim_galore --gzip -j 3 --paired ${data_path}/${fastq_file_arr1[0]} ${data_path}/${fastq_file_arr1[1]} --trim-n -o ${data_path} --no_report_file --basename ${out_name}_ctrl > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    bowtie2 -q -p 10 -x ${mapping_index} -1 ${data_path}/${out_name}_treat_val_1.fq.gz -2 ${data_path}/${out_name}_treat_val_2.fq.gz -S ${result_path}/${out_name}/${out_name}.treat.sam > ${log_path}/${out_name}/${out_name}.TreatMapping.log 2>&1
+    bowtie2 -q -p 10 -x ${mapping_index} -1 ${data_path}/${out_name}_ctrl_val_1.fq.gz -2 ${data_path}/${out_name}_ctrl_val_2.fq.gz -S ${result_path}/${out_name}/${out_name}.ctrl.sam > ${log_path}/${out_name}/${out_name}.CtrlMapping.log 2>&1
+    rm -rf ${data_path}/${out_name}_treat_val_1.fq.gz ${data_path}/${out_name}_treat_val_2.fq.gz
+    rm -rf ${data_path}/${out_name}_ctrl_val_1.fq.gz ${data_path}/${out_name}_ctrl_val_2.fq.gz
+
+    samtools view -@ 5 -bS ${result_path}/${out_name}/${out_name}.treat.sam > ${result_path}/${out_name}/${out_name}.treat.bam
+    samtools sort -@ 5 ${result_path}/${out_name}/${out_name}.treat.bam > ${bam_path}/${out_name}.treat.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.treat.sam ${result_path}/${out_name}/${out_name}.treat.bam
+    samtools view -@ 5 -bS ${result_path}/${out_name}/${out_name}.ctrl.sam > ${result_path}/${out_name}/${out_name}.ctrl.bam
+    samtools sort -@ 5 ${result_path}/${out_name}/${out_name}.ctrl.bam > ${bam_path}/${out_name}.ctrl.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.ctrl.sam ${result_path}/${out_name}/${out_name}.ctrl.bam
+
+    # Remove duplicate reads
+    samtools view -@ 5 -H ${bam_path}/${out_name}.treat.bam > ${bam_path}/${out_name}.treat.Filtered.sam
+    samtools view -@ 5 -f 0x2 ${bam_path}/${out_name}.treat.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.treat.Filtered.sam
+    samtools view -@ 5 -bS ${bam_path}/${out_name}.treat.Filtered.sam > ${bam_path}/${out_name}.treat.Filtered.bam
+    rm ${bam_path}/${out_name}.treat.Filtered.sam 
+    samtools sort -@ 5 -n -o ${bam_path}/${out_name}.treat.Sort.bam ${bam_path}/${out_name}.treat.Filtered.bam
+    rm ${bam_path}/${out_name}.treat.Filtered.bam
+    samtools fixmate -@ 5 -m ${bam_path}/${out_name}.treat.Sort.bam ${bam_path}/${out_name}.treat.FixMate.bam
+    rm ${bam_path}/${out_name}.treat.Sort.bam
+    samtools sort -@ 5 -o ${bam_path}/${out_name}.treat.FixMateSorted.bam ${bam_path}/${out_name}.treat.FixMate.bam
+    rm ${bam_path}/${out_name}.treat.FixMate.bam
+    samtools markdup -@ 5 -r ${bam_path}/${out_name}.treat.FixMateSorted.bam ${bam_path}/${out_name}.treat.bam
+    rm ${bam_path}/${out_name}.treat.FixMateSorted.bam
+    
+    samtools view -@ 5 -H ${bam_path}/${out_name}.ctrl.bam > ${bam_path}/${out_name}.ctrl.Filtered.sam
+    samtools view -@ 5 -f 0x2 ${bam_path}/${out_name}.ctrl.bam | awk 'NR % 2 == 1{mapq=$5;forward=$0} NR % 2 == 0{if($5>=30 && mapq>=30 && substr($3,1,3)=="chr" && $3!="chrM") print forward"\n"$0}' >> ${bam_path}/${out_name}.ctrl.Filtered.sam
+    samtools view -@ 5 -bS ${bam_path}/${out_name}.ctrl.Filtered.sam > ${bam_path}/${out_name}.ctrl.Filtered.bam
+    rm ${bam_path}/${out_name}.ctrl.Filtered.sam 
+    samtools sort -@ 5 -n -o ${bam_path}/${out_name}.ctrl.Sort.bam ${bam_path}/${out_name}.ctrl.Filtered.bam
+    rm ${bam_path}/${out_name}.ctrl.Filtered.bam
+    samtools fixmate -@ 5 -m ${bam_path}/${out_name}.ctrl.Sort.bam ${bam_path}/${out_name}.ctrl.FixMate.bam
+    rm ${bam_path}/${out_name}.ctrl.Sort.bam
+    samtools sort -@ 5 -o ${bam_path}/${out_name}.ctrl.FixMateSorted.bam ${bam_path}/${out_name}.ctrl.FixMate.bam
+    rm ${bam_path}/${out_name}.ctrl.FixMate.bam
+    samtools markdup -@ 5 -r ${bam_path}/${out_name}.ctrl.FixMateSorted.bam ${bam_path}/${out_name}.ctrl.bam
+    rm ${bam_path}/${out_name}.ctrl.FixMateSorted.bam
+
+    # Generate bigwig file
+    macs3 pileup -f BAMPE -i ${bam_path}/${out_name}.treat.bam -o ${bam_path}/${out_name}.treat.bdg
+    grep -v "_" ${bam_path}/${out_name}.treat.bdg | grep -v "-" - | sort -k1,1 -k2,2n  > ${bam_path}/${out_name}.treat.tmp.bdg
+    bedClip ${bam_path}/${out_name}.treat.tmp.bdg ${chromInfo} ${bam_path}/${out_name}.treat.clean.bdg
+    bedGraphToBigWig ${bam_path}/${out_name}.treat.clean.bdg ${chromInfo} ${bw_path}/${out_name}.treat.Raw.bw
+    rm ${bam_path}/${out_name}.treat.bdg ${bam_path}/${out_name}.treat.tmp.bdg ${bam_path}/${out_name}.treat.clean.bdg
+
+    macs3 pileup -f BAMPE -i ${bam_path}/${out_name}.ctrl.bam -o ${bam_path}/${out_name}.ctrl.bdg
+    grep -v "_" ${bam_path}/${out_name}.ctrl.bdg | grep -v "-" - | sort -k1,1 -k2,2n  > ${bam_path}/${out_name}.ctrl.tmp.bdg
+    bedClip ${bam_path}/${out_name}.ctrl.tmp.bdg ${chromInfo} ${bam_path}/${out_name}.ctrl.clean.bdg
+    bedGraphToBigWig ${bam_path}/${out_name}.ctrl.clean.bdg ${chromInfo} ${bw_path}/${out_name}.ctrl.Raw.bw
+    rm ${bam_path}/${out_name}.ctrl.bdg ${bam_path}/${out_name}.ctrl.tmp.bdg ${bam_path}/${out_name}.ctrl.clean.bdg
+
+    TreatReadsNumber=`samtools view -c -F 260 ${bam_path}/${out_name}.treat.bam`
+    CtrlReadsNumber=`samtools view -c -F 260 ${bam_path}/${out_name}.ctrl.bam`
+    scaleFactor1=`bc -l <<< "1000000/${TreatReadsNumber}"`
+    scaleFactor2=`bc -l <<< "1000000/${CtrlReadsNumber}"`
+    bigwigCompare -b1 ${bw_path}/${out_name}.treat.Raw.bw -b2 ${bw_path}/${out_name}.ctrl.Raw.bw --scaleFactors ${scaleFactor1}:${scaleFactor2} --skipZeroOverZero --operation log2 -bs 10 -o ${bw_path}/${out_name}.bw -of bigwig
+    bigWigToBedGraph ${bw_path}/${out_name}.bw ${bw_path}/${out_name}.tmp.bdg
+    awk -v "OFS=\t" '{if ($4<0) print ($1,$2,$3,0);else print ($0)}' ${bw_path}/${out_name}.tmp.bdg > ${bw_path}/${out_name}.bdg
+    bedGraphToBigWig ${bw_path}/${out_name}.bdg ${chromInfo} ${bw_path}/${out_name}.bw
+    rm ${bw_path}/${out_name}.tmp.bdg ${bw_path}/${out_name}.bdg
+
+else
+    echo "The experiment layout should be either 'single' end or 'pair' end."
+fi
+
+# 2.peak calling -----------------------------------------------------------------------------
+echo "2.peak calling..."
+macs14 callpeak -g ${species} -p 1e-5 --keep-dup 1 --nomodel --shiftsize 73 -t ${bam_path}/${out_name}.treat.bam -c ${bam_path}/${out_name}.ctrl.bam -n ${peak_path}/${out_name}
+
+# 3.Promoter signal calculation ----------------------------------------------------------------------
+echo "3.Promoter signal calculation..."
+python3 /usr/local/bin/GetBigwigSignal.py ${promoter_file} ${bw_path}/${out_name}.bw ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp 1
+cut -f 5 ${promoter_file} | paste - ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp > ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2
+python3 /usr/local/bin/GeneSymbolUniq.py ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2 ${result_path}/${out_name}/${out_name}.PromoterSignal 0
+rm ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp
+rm ${result_path}/${out_name}/${out_name}.PromoterSignal.tmp2
+
+echo "Done!"
+echo "--------------------------------------------------------------------------------" 

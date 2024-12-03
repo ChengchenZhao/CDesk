@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# Description : RNA-seq data analysis pipeline.
+# Author      : Chengchen Zhao
+# Version     : 1.1
+# Time        : 2021-07-21 09:00:40
+
+####################################################################################################
+#################################     PARAMETER/FUNCTION DEFINE     ################################
+####################################################################################################
+data_path=${1}
+result_path=${2}
+out_name=${3}
+
+layout=${4} # single/pair
+fastq_file=${5} # "YourFastqFile.fastq.gz" for single-end
+                # "YourFastqFile_R1.fastq.gz,YourFastqFile_R2.fastq.gz" for pair-end
+
+mapping_index=${6} # /data/zhaochengchen/Data/mm9/mm9
+refseq_gtf=${7} # /data/zhaochengchen/Data/mm9/mm9_refSeq.gtf
+refseq_bed=${8} # /data/zhaochengchen/Data/mm9/mm9.refseq.bed
+chromInfo=${9} # /data/zhaochengchen/Data/mm9/mm9.len
+
+echo "--------------------------------------------------------------------------------" 
+if [ ! -n "${9}" ]
+then 
+    echo "Parameters are missing, please check your input." 
+    exit 2
+else 
+    echo "RNA-seq data analysis pipeline is now running..." 
+fi 
+
+
+log_path=${result_path}/log
+bam_path=${result_path}/bam
+
+####################################################################################################
+#################################          ANALYSIS STEPS           ################################
+####################################################################################################
+
+if [ ! -d "${result_path}" ]; then
+  mkdir ${result_path}
+fi
+if [ ! -d "${log_path}" ]; then
+  mkdir ${log_path}
+fi
+if [ ! -d "${bam_path}" ]; then
+  mkdir ${bam_path}
+fi
+if [ ! -d "${result_path}/${out_name}" ]; then
+  mkdir ${result_path}/${out_name}
+fi
+if [ ! -d "${log_path}/${out_name}" ]; then
+  mkdir ${log_path}/${out_name}
+fi
+
+# 1.mapping ----------------------------------------------------------------------------------------
+echo "1.mapping..."
+if [ "${layout}" == "single" ]
+then
+    nohup trim_galore --gzip -j 3 ${data_path}/${fastq_file} --trim-n -o ${result_path} --no_report_file --basename ${out_name} > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    hisat2 -p 10 --dta -x ${mapping_index} -U ${result_path}/${out_name}_trimmed.fq.gz -S ${result_path}/${out_name}/${out_name}.align.sam > ${log_path}/${out_name}/${out_name}.Mapping.log 2>&1
+    rm -rf ${result_path}/${out_name}_trimmed.fq.gz
+    samtools view -@ 10 -bS ${result_path}/${out_name}/${out_name}.align.sam > ${result_path}/${out_name}/${out_name}.bam
+    samtools sort -@ 10 ${result_path}/${out_name}/${out_name}.bam > ${result_path}/${out_name}/${out_name}.Sorted.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.align.sam ${result_path}/${out_name}/${out_name}.bam
+    mv ${result_path}/${out_name}/${out_name}.Sorted.bam ${bam_path}/${out_name}.bam
+    nohup stringtie -e -B -p 10 -G ${refseq_gtf} -o ${result_path}/${out_name}/${out_name}.gtf ${bam_path}/${out_name}.bam > ${log_path}/${out_name}/${out_name}.Stringtie.log 2>&1
+elif [ "${layout}" == "pair" ]
+then
+    IFS=','
+    read -ra fastq_file_arr <<< "${fastq_file}"
+    nohup trim_galore --gzip -j 3 --paired ${data_path}/${fastq_file_arr[0]} ${data_path}/${fastq_file_arr[1]} --trim-n -o ${result_path} --no_report_file --basename ${out_name} > ${log_path}/${out_name}/${out_name}.TrimGalore.log 2>&1
+    hisat2 -p 10 --dta -x ${mapping_index} -1 ${result_path}/${out_name}_val_1.fq.gz -2 ${result_path}/${out_name}_val_2.fq.gz -S ${result_path}/${out_name}/${out_name}.align.sam > ${log_path}/${out_name}/${out_name}.Mapping.log 2>&1
+    rm -rf ${result_path}/${out_name}_val_1.fq.gz ${result_path}/${out_name}_val_2.fq.gz
+    samtools view -@ 10 -bS ${result_path}/${out_name}/${out_name}.align.sam > ${result_path}/${out_name}/${out_name}.bam
+    samtools sort -@ 10 ${result_path}/${out_name}/${out_name}.bam > ${result_path}/${out_name}/${out_name}.Sorted.bam
+    rm -rf ${result_path}/${out_name}/${out_name}.align.sam ${result_path}/${out_name}/${out_name}.bam
+    mv ${result_path}/${out_name}/${out_name}.Sorted.bam ${bam_path}/${out_name}.bam
+    nohup stringtie -e -B -p 10 -G ${refseq_gtf} -o ${result_path}/${out_name}/${out_name}.gtf ${bam_path}/${out_name}.bam > ${log_path}/${out_name}/${out_name}.Stringtie.log 2>&1
+else
+    echo "The experiment layout should be either 'single' end or 'pair' end."
+fi
+
+# 2.reads distribution -----------------------------------------------------------------------------
+echo "2.reads distribution..."
+samtools index -@ 10 ${bam_path}/${out_name}.bam
+python3 /usr/local/bin/read_distribution.py -i ${bam_path}/${out_name}.bam -r ${refseq_bed} > ${log_path}/${out_name}/${out_name}.readsDistribution
+
+# 3.Expression quantification ----------------------------------------------------------------------
+echo "3.Expression quantification..."
+python3 /usr/local/bin/RNA_seq_preprocessing.py ${result_path}
+python3 /usr/local/bin/RemoveDuplicateGenes.py ${result_path}/merge_fpkm.txt ${result_path}/${out_name}_GeneSymbol_fpkm.txt
+mv ${result_path}/merge_fpkm.txt ${result_path}/${out_name}_Transcript_fpkm.txt
+
+prepDE.py -i ${result_path}/gtf_file_path.txt -g ${result_path}/gene_count.txt -t ${result_path}/transcript_count.txt > ${log_path}/CountConvertion.log 2>&1
+sed -i "s/,/\t/g" ${result_path}/gene_count.txt
+sed -i "s/,/\t/g" ${result_path}/transcript_count.txt
+mv ${result_path}/gene_count.txt ${result_path}/${out_name}_GeneSymbol_counts.txt
+mv ${result_path}/transcript_count.txt ${result_path}/${out_name}_Transcript_counts.txt
+
+# n=`cut -f 4 RNA_seq_${name}_fragments.bed | sort -S 1% | uniq | wc -l` && \
+# c=`bc -l <<< "1000000 / ${n}"` && \
+# sort -S 1% -k1,1 -k2,2n RNA_seq_${name}_fragments.bed | genomeCoverageBed -bga -scale $c -i - -g /Data/annotation/${genomeVersion}/${genomeVersion}.len > RNA_seq_${name}_fragments.bdg
+# /bin/bdg2bw.sh RNA_seq_${name}_fragments.bdg /Data/annotation/${genomeVersion}/${genomeVersion}_main.len RNA_seq_${name}
+# rm RNA_seq_${name}_fragments.bdg
+
+echo "Done!"
+echo "--------------------------------------------------------------------------------" 

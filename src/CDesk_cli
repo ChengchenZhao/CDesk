@@ -1,0 +1,8 @@
+#!/mnt/runtask/micromamba/bin/python3.9
+
+import sys
+sys.path.append("/mnt/runtask/CDesk/src")
+
+from CDesk_cmd import main
+
+main(sys.argv)

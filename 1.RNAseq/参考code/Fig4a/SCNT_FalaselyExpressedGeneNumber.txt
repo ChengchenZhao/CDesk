@@ -1,0 +1,4 @@
+    2865 Ctrl_All_dn_genes.txt
+    1142 Ctrl_All_up_genes.txt
+    1298 M14h_All_dn_genes.txt
+     598 M14h_All_up_genes.txt

@@ -1,0 +1,7 @@
+m<-matrix(AirPassengers,nrow=12,ncol=12,byrow=T)
+colnames(m)<-c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+rownames(m)<-c("1949","1950","1951","1952","1953","1954","1955","1956","1957","1958","1959","1960")
+barplot(height=m[,1:3],names.arg = rownames(m[1:3]),xlab="year",ylab="Passenger Numbers(K)",beside=T)
+barplot(height=t(m[,1:3]),names.arg = rownames(m[1:3]),xlab="year",ylab="Passenger Numbers(K)",beside=T)
+barplot(height=t(m[,1:3]),names.arg = rownames(m[1:3]),xlab="year",ylab="Passenger Numbers(K)",beside=T,col=c("red","green","yellow"))
+legend("topleft",c("Jan","Feb","Mar"),col=c("red","green","yellow"),bty="n",pch=15)

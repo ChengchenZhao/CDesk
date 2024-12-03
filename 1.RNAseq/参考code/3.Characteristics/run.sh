@@ -1,0 +1,2 @@
+Rscript HMCharacteristics.r
+Rscript ExpCharacteristics.r
