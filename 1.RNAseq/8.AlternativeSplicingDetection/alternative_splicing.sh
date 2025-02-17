@@ -106,12 +106,18 @@ if [ ! -f "$gtf_file" ]; then
 fi
 
 # Run rmats.py command
+if [ ! -d "${output_dir}" ]; then
+    mkdir -p ${output_dir}
+fi
 
-mkdir "$output_dir"
+if [ ! -d "${output_dir}/tmp" ]; then
+    mkdir -p ${output_dir}/tmp
+fi
 
-mkdir "$output_dir"/tmp
 
-rmats.py \
+#source /mnt/linzejie/miniconda3/bin/activate rmats
+script_dir=$(dirname "$(realpath "$0")")
+conda run -n rmats python "$script_dir/rmats-turbo-master/rmats.py" \
   --b1 "$b1_file" \
   --b2 "$b2_file" \
   --gtf "$gtf_file" \
@@ -120,6 +126,6 @@ rmats.py \
   --nthread 20 \
   --od "$output_dir" \
   --tmp "$output_dir"/tmp
-  1>rmats.log 2>rmats.err &
+#source /mnt/linzejie/miniconda3/bin/deactivate
 
 echo "rmats.py command has started, output will be saved in $output_dir, log files are rmats.log and rmats.err"
