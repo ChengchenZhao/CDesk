@@ -89,7 +89,7 @@ done
 
 # Check if required arguments are provided
 
-if [ -z "$b1_file" ] || [ -z "$b2_file" ] || [ -z "$gff_file" ] || [ -z "$output_dir" ] || [ -z "$interval" ] || [ -z "$groupinfo" ]; then
+if [ -z "$b1_file" ] || [ -z "$b2_file" ] || [ -z "$gff_file" ] || [ -z "$output_dir" ]||[ -z "$interval" ]||[ -z "$groupinfo"]; then
 
   echo "Error: All required arguments must be provided"
   display_help
@@ -99,6 +99,21 @@ if [ -z "$b1_file" ] || [ -z "$b2_file" ] || [ -z "$gff_file" ] || [ -z "$output
 fi
 
 # Check if input files exist
+
+if [ ! -f "$b1_file" ]; then
+
+  echo "Error: b1 file $b1_file does not exist"
+  exit 1
+
+fi
+
+if [ ! -f "$b2_file" ]; then
+
+  echo "Error: b2 file $b2_file does not exist"
+  exit 1
+
+fi
+
 if [ ! -f "$gff_file" ]; then
 
   echo "Error: GFF file $gff_file does not exist"
@@ -119,19 +134,20 @@ mkdir "$output_dir";
 
 mkdir "$output_dir"/tmp;
 
+b1info=$(cat "$b1_file");
+
+b2info=$(cat "$b2_file");
+
 sample1=$(cut -f1 -d " " "$groupinfo"|sed -e "s/://g"|head -n1);
 
 sample2=$(cut -f1 -d " " "$groupinfo"|sed -e "s/://g"|tail -n1);
 
-#source /mnt/linzejie/miniconda3/bin/activate rmats2plot
-
-conda run -n rmats2plot rmats2sashimiplot \
-  --b1 "$b1_file" \
-  --b2 "$b2_file" \
+rmats2sashimiplot \
+  --b1 "$b1info" \
+  --b2 "$b2info" \
   -c "$interval":"$gff_file" \
   --intron_s 5 \
   -o "$output_dir" \
   --group-info "$groupinfo" \
   --l1 "$sample1" --l2 "$sample2"
 
-#source /mnt/linzejie/miniconda3/bin/deactivate
