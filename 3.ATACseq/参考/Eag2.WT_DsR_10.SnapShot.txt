@@ -1,0 +1,5 @@
+snapshotDirectory /Users/chengchenzhao/Library/CloudStorage/OneDrive-Personal/Projects/Working/9.Eag2/results/GenomeVisulization/Rep2/WT_DsR_10
+goto chr6:64719145-64739145
+snapshot Atoh1__NM_007500.png
+goto chr3:98372480-98392480
+snapshot Zfp697__NM_172863.svg
