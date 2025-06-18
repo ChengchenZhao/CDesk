@@ -7,7 +7,7 @@ import json
 import tempfile
 import shutil
 
-root_dir = os.path.abspath(os.path.dirname(__file__))
+root_dir = os.path.dirname(os.path.realpath(__file__))
 config_path = os.path.join(root_dir, 'config.json')
 with open(config_path, "r") as f:
     config = json.load(f)
