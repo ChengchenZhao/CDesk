@@ -1,25 +1,15 @@
-#! /usr/bin/Rscript
-
-# Description : Perform the GO/KEGG enrichment analysis based on the pubsihed GO/KEGG gene sets
-# Author      : Zheting Zhang
-# Time        : 2024-11-17
 args <- commandArgs(trailingOnly = TRUE)
 
 gene_file <- args[1]
-analysis_type <- args[2]
-if (analysis_type == "GO") {
+custom <- args[2]
+if (custom == "no") {
   species <- args[3]
-  cutoff <- as.numeric(args[4])
-  output = args[5]
-  if (cutoff <= 0 || cutoff > 1){
-          stop("cutoff value must be [0:1]")
-  }
-  plot_width <- as.numeric(args[6])
-  plot_height <- as.numeric(args[7])
-}
-
-if (analysis_type == "KEGG") {
-  species <- args[3]
+  output = args[4]
+  plot_width <- as.numeric(args[5])
+  plot_height <- as.numeric(args[6])
+} else {
+  customer_term = custom
+  species = args[3]
   output = args[4]
   plot_width <- as.numeric(args[5])
   plot_height <- as.numeric(args[6])
@@ -28,178 +18,217 @@ if (analysis_type == "KEGG") {
 high_color = 'red'
 low_color = 'blue'
 
-# 检测并安装必要的包
-packages <- c("BiocManager", "clusterProfiler", "org.Hs.eg.db", "org.Rn.eg.db", "org.Mm.eg.db", "org.Gg.eg.db", "org.Ss.eg.db", "enrichplot", "ggplot2","clusterProfiler")
-
-for (pkg in packages) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    if (pkg == "BiocManager") {
-      install.packages("BiocManager")
-    } else {
-      BiocManager::install(pkg)
-    }
-  }
-}
-
 #Load packages
 suppressMessages(library(dplyr))
-library(org.Hs.eg.db) %>% suppressMessages()
-library(org.Rn.eg.db) %>% suppressMessages()
-library(org.Mm.eg.db) %>% suppressMessages() 
-library(org.Gg.eg.db) %>% suppressMessages()
-library(org.Ss.eg.db) %>% suppressMessages()
+
 library(enrichplot) %>% suppressMessages()
 library(ggplot2) %>% suppressMessages()
 library(clusterProfiler) %>% suppressMessages()
-
+library(KEGG.db) %>% suppressMessages()
 if (!dir.exists(output)) dir.create(output, recursive = TRUE)
 
-# 定义物种数据库映射
-species_dbs <- list(
-  "human" = org.Hs.eg.db,
-  "rat" = org.Rn.eg.db,
-  "mouse" = org.Mm.eg.db,
-  "chicken" = org.Gg.eg.db,
-  "pig" = org.Ss.eg.db)
+if (species != 'no'){
+  library(org.Hs.eg.db) %>% suppressMessages()
+  library(org.Mm.eg.db) %>% suppressMessages()
+  library(org.Rn.eg.db) %>% suppressMessages()
+  library(org.Gg.eg.db) %>% suppressMessages()
+  library(org.Ss.eg.db) %>% suppressMessages()
+  if (!(species %in% c('human','mouse','rat','chicken','pig'))) {
+    stop(paste('Species allowed:', toString(c('human','mouse','rat','chicken','pig'))))
+  }
+  species_dbs <- list(
+    "human" = org.Hs.eg.db,
+    "rat" = org.Rn.eg.db,
+    "mouse" = org.Mm.eg.db,
+    "chicken" = org.Gg.eg.db,
+    "pig" = org.Ss.eg.db)
+  
+  organisms = c('hsa','mmu','rno','gga','ssc')
+  names(organisms) = c('human','mouse','rat','chicken','pig')
+}
 
-
-# 定义函数进行GO或KEGG富集分析
-organisms = c('hsa','mmu','rno','gga','ssc')
-names(organisms) = c('human','mouse','rat','chicken','pig')
-
-perform_enrichment <- function(gene_file, analysis_type, species) {
-  # 读取基因列表文件
+perform_enrichment <- function(gene_file, species) {
+  # Read gene list
   gene_list <- read.table(gene_file, header = FALSE, stringsAsFactors = FALSE)
-  # 选择物种数据库
+  # Species database
   org_db <- species_dbs[[species]]
-
+  
   # transform geneID
   gene.df <- bitr(geneID = gene_list$V1, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org_db)
+  
+  # GO
+  enrich_GO <- enrichGO(gene = gene.df$ENTREZID,
+                        OrgDb = org_db,
+                        ont = "ALL",
+                        pAdjustMethod = "BH",
+                        pvalueCutoff = 0.05,
+                        qvalueCutoff = 0.5,
+                        keyType = "ENTREZID",
+                        readable = TRUE)
+  
+  enrich_GO_df <- as.data.frame(enrich_GO)
+  go_empty <- nrow(enrich_GO_df) == 0
+  
+  # KEGG
+  enrich_KEGG <- enrichKEGG(gene = gene.df$ENTREZID,
+                            organism = organisms[[species]],
+                            keyType = "kegg",
+                            pAdjustMethod = "BH",
+                            minGSSize = 1,
+                            maxGSSize = 5000,
+                            pvalueCutoff = 0.05,
+                            qvalueCutoff = 0.5,
+			    use_internal_data = TRUE)
+  
+  enrich_KEGG_df <- as.data.frame(enrich_KEGG)
+  kegg_empty <- nrow(enrich_KEGG_df) == 0
+  
+  # Check
+  if (go_empty && kegg_empty) {
+    stop("Error: Both GO and KEGG enrichment results are empty.")
+  }
+  
+  if (!go_empty) {
+    enrich_GO_final <- enrich_GO_df
+  }
+  
+  if (!kegg_empty) {
+    enrich_KEGG_df$ONTOLOGY <- 'KEGG'
+    enrich_KEGG_final <- enrich_KEGG_df[, colnames(enrich_GO_df)]
+  }
 
-  # 进行GO富集分析
-  if (analysis_type == "GO") {
-    enrich_result <- enrichGO(gene = gene.df$ENTREZID,
-                              OrgDb = org_db,
-                              ont = "ALL",
-        		                  pAdjustMethod = "BH",
-			                       pvalueCutoff = 0.05,
-			                       qvalueCutoff = 0.5,
-			                       keyType = "ENTREZID",
-                              readable = TRUE)
+  if (!go_empty && !kegg_empty) {
+    enrich_result <- rbind(enrich_GO_final, enrich_KEGG_final)
+  } else if (!go_empty) {
+    enrich_result <- enrich_GO_final
+  } else {
+    enrich_result <- enrich_KEGG_final
   }
   
-  # 进行KEGG富集分析
-  if (analysis_type == "KEGG") {
-    enrich_result <- enrichKEGG(gene = gene.df$ENTREZID,
-                                organism = organisms[[species]],
-			                         	keyType = "kegg",
-			                        	pAdjustMethod = "BH",
-			                         	minGSSize = 1, 
-			                         	maxGSSize = 5000,
-			                         	pvalueCutoff = 0.05,
-		                       		qvalueCutoff = 0.5)
-  }
-  
-  # 输出结果表格
-#  output_file <- paste0(gene_file,analysis_type, "_enrichment_results.txt")
-#  write.table(as.data.frame(enrich_result), file = output_file, row.names = FALSE, sep = "\t")
-  
-  # 返回结果对象
+  enrich_result$ONTOLOGY = factor(enrich_result$ONTOLOGY,levels = c('BP','CC','MF','KEGG'))
   return(enrich_result)
 }
 
-# 去冗余函数
-simplify_enrichment <- function(enrich_result, cutoff) {
-  if (nrow(enrich_result) > 0) {
-    simplified_result <- simplify(enrich_result, cutoff = cutoff)
-  } else {
-    simplified_result <- enrich_result
-    
+perform_custom_enrichment <- function(gene_file,customer_term) {
+  gene_list <- read.table(gene_file, header = FALSE, stringsAsFactors = FALSE)  
+  
+  # Custom term
+  customer_term <- read.table(customer_term,header = FALSE,stringsAsFactors = FALSE,col.names = c("Name","Gene"),sep = "\t")
+  
+  if (ncol(customer_term)<2) {
+    stop("customer file needs two colums: functional term and gene(symbol)")
   }
-  return(simplified_result)
+  
+  customer_term_id <- unique(customer_term$Name)
+  customer_term_id <- data.frame(Term=paste0("term_",c(1:length(customer_term_id))),Name=customer_term_id)
+  customer_term <- merge(customer_term,customer_term_id,by="Name") %>% select(Term,Gene)
+  
+  # Enrichment analysis
+  enrich_result <- enricher(gene = gene_list$V1,
+                            pAdjustMethod = "BH",
+                            pvalueCutoff = 0.05,
+                            qvalueCutoff = 0.5,
+                            TERM2GENE = customer_term,
+                            TERM2NAME = customer_term_id)
+  
+  enrich_result <- as.data.frame(enrich_result)
+  enrich_result$ONTOLOGY = 'Custom' 
+  return(enrich_result)
 }
 
-# 执行富集分析
-enrichment_result <- perform_enrichment(gene_file, analysis_type, species)
-
-# 合并冗余项
-if (analysis_type == "GO") {
-  enrichment_result <- simplify_enrichment(enrichment_result,cutoff)
+# Perform enrichment
+if (custom == "no"){
+  enrichment_result <- perform_enrichment(gene_file, species)
+} else {
+  enrichment_result <- perform_custom_enrichment(gene_file, customer_term)
 }
 
-# 层级筛选
-#enrichment_result <- gofilter(enrichment_result,level = level_low:level_high)
+# Output
+output_file <- file.path(output,'enrichment_results.csv')
 
-file_name <- basename(output)
-file_prefix <- sub("\\.[^.]*$", "", file_name)
+enrichment_result <- data.frame(lapply(enrichment_result, function(col) {
+  if (is.character(col)) {  
+    return(gsub(",", ";", col))  # , -> ;
+  } else {
+    return(col)  
+  }
+}), stringsAsFactors = FALSE)  
 
-# 打印结果
-if (analysis_type == "GO") {
-  output_file <- paste0(output,'/',analysis_type,'_',cutoff,"cutoff","_enrichment_results.txt")
-}
-if (analysis_type == "KEGG") {
-  output_file <- paste0(output,'/',analysis_type,"_enrichment_results.txt")
-}
-
-write.table(as.data.frame(enrichment_result), file = output_file, row.names = FALSE, sep = ";",quote=FALSE)
+write.table(as.data.frame(enrichment_result), file = output_file, row.names = FALSE, sep = ",",quote=FALSE)
 
 #################################################################################
-
 plot_bubble <- function(enrich_result,high_color,low_color) {
-  
   if (colnames(enrich_result)[1]=="ONTOLOGY") {
-    
+    enrich_result$ONTOLOGY = factor(enrich_result$ONTOLOGY,levels = c('BP','CC','MF','KEGG','Custom'))
+    enrich_result <- enrich_result %>%
+      group_by(ONTOLOGY) %>%
+      arrange(pvalue, .by_group = TRUE) %>%
+      slice_head(n = 10) %>%
+      ungroup()
     p <- ggplot(enrich_result)+
       geom_point(aes(x=GeneRatio,y=Description,col=-log10(p.adjust),size=Count))+
       theme_bw()+
       scale_color_gradient(high = high_color,low = low_color)+
       facet_grid(ONTOLOGY~.,scales = "free_y",space = "free_y")+
-      theme(text = element_text(size = 20))
+      theme(text = element_text(size = 10))
     return(p)
   }
   if (colnames(enrich_result)[1]!="ONTOLOGY") {
+    enrich_result <- enrich_result[order(enrich_result$pvalue),]
+    enrich_result <- head(enrich_result, 20)
     p <- ggplot(enrich_result)+
       geom_point(aes(x=GeneRatio,y=Description,col=-log10(p.adjust),size=Count))+
       theme_bw()+
       scale_color_gradient(high = high_color,low = low_color)+
-      theme(text = element_text(size = 20)) 
+      theme(text = element_text(size = 10)) 
     return(p)
   }}
-# 定义函数绘制柱状图
 
 plot_bar <- function(enrich_result) {
   if (colnames(enrich_result)[1]=="ONTOLOGY") {
+    enrich_result$ONTOLOGY = factor(enrich_result$ONTOLOGY,levels = c('BP','CC','MF','KEGG','Custom'))
+    enrich_result <- enrich_result %>%
+      group_by(ONTOLOGY) %>%
+      arrange(pvalue, .by_group = TRUE) %>%
+      slice_head(n = 10) %>%
+      ungroup()
     p <- ggplot(enrich_result) +
       geom_bar(aes(x=-log10(p.adjust),y=Description,fill=ONTOLOGY),stat = "identity")+
       theme_bw() +
       facet_grid(ONTOLOGY~.,scales = "free_y",space = "free_y")+
-      theme(text = element_text(size = 20))
+      theme(text = element_text(size = 10))
     return(p)
   }
   if (colnames(enrich_result)[1]!="ONTOLOGY") {
+    enrich_result <- enrich_result[order(enrich_result$pvalue),]
+    enrich_result <- head(enrich_result, 20)
     p <- ggplot(enrich_result) +
       geom_bar(aes(x=-log10(p.adjust),y=Description,fill='orange'),stat = "identity",show.legend = FALSE)+
       theme_bw() +
-      theme(text = element_text(size = 20))
+      theme(text = element_text(size = 10))
     return(p)  
   }}
 
-enrich_result = read.csv(output_file,header = TRUE,sep = ";", stringsAsFactors = FALSE)
+enrich_result = enrichment_result
 if (length(enrich_result$Description)==0) {
   stop("No pathways meeting the criteria were found.")
 }
+
+enrich_result <- enrich_result[order(enrich_result$p.adjust), ]
+enrich_result <- enrich_result[!duplicated(enrich_result$Description), ]
 enrich_result$Description <- factor(enrich_result$Description,levels = as.character(enrich_result$Description[rev(order(enrich_result$p.adjust))]))
 enrich_result$GeneRatio <-  sapply(enrich_result$GeneRatio, cal <- function(x){out=eval(parse(text = x)); return(out)})
 
 file_name = basename(output_file)
 file_prefix <- sub("\\.[^.]*$", "", file_name)
-# 绘制气泡图
-pdf(paste0(output,'/',file_prefix,"_bubble.pdf"),width = plot_width,height = plot_height)
+
+# Bubble plot
+pdf(file.path(output,'enrichment_bubble.pdf'),width = plot_width,height = plot_height)
 plot_bubble(enrich_result,high_color,low_color)
 while (!is.null(dev.list()))  dev.off()
 
-# 绘制柱状图
-pdf(paste0(output,'/',file_prefix,"_bar.pdf"),width = plot_width,height = plot_height)
+# Bar plot
+pdf(file.path(output,'enrichment_bar.pdf'),width = plot_width,height = plot_height)
 plot_bar(enrich_result)
 while (!is.null(dev.list()))  dev.off()
 cat("Thanks for using ! ^_^ , any question please contact with Bioinformatic Team of Pei\n")

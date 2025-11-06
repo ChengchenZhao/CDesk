@@ -1,10 +1,4 @@
-#!/bin/bash
-
-# Description : generate TE
-# Author      : WEI SHI
-# Version     : 1.0
-# Time        : 2024-10-20 12:28:00
-
+#!/usr/bin/env bash
 show_help() {
     echo "Usage: bash BulkRNAseqTE.sh [OPTIONS]"
     echo "Options:"
@@ -13,46 +7,51 @@ show_help() {
     echo "  -o OUTPUT_DIRECTORY	Specify the absolute directory of output file, the ending does not require a '/'"
     echo "  -p INT		Specify number of threads (default is 8)"
     echo "  -s SPECIES          Specify the species"
-    echo "  -t TE_NAME_FILE     Specify the path to TE name reference file (optional)"
 }
 
-config_json=${!#}
+config_json='/mnt/linzejie/CDesk/config.json'
 THREAD=8
-SCRIPT_DIR=$(dirname $(realpath $0))
-ALLOWED_SPECIES=("mm10" "hg38" "rn7" "susScr11" "galGal6")
+SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 
-SCTE=$(jq -r '.software.scTE' $config_json)
-for tool in "$SCTE"; do
-    if [ ! -x "$tool" ]; then
-        echo "Error: Tool not found or not executable: $tool"
+if command -v scTE > /dev/null 2>&1; then
+    SCTE_CMD="scTE"
+else
+    if [[ -f $config_json ]]; then
+        SCTE_PATH=$(jq -r '.software.scTE' $config_json 2>/dev/null)
+        if [[ -n "$SCTE_PATH" && "$SCTE_PATH" != "null" ]]; then
+            if [[ -x "$SCTE_PATH" ]]; then
+                SCTE_CMD="$SCTE_PATH"
+            else
+                echo "❌ Error: scTE path from config.json is not executable: $SCTE_PATH" >&2
+                exit 1
+            fi
+        else
+            echo "❌ Error: 'scTE' not found or empty in config.json" >&2
+            exit 1
+        fi
+    else
+        echo "❌ Error: config.json not found" >&2
         exit 1
     fi
-done
+fi
 
-while getopts ":hi:s:o:t:p:" opt; do
+while getopts ":hi:s:o:p:" opt; do
     case ${opt} in
         h )
             show_help
             exit 0
             ;;
         i )
-            INPUT_DIRECTORY=$(realpath "${OPTARG}")
+            INPUT_DIRECTORY=${OPTARG}
             ;;
         o)
-            OUTPUT_DIRECTORY=$(realpath "${OPTARG}")
+            OUTPUT_DIRECTORY=${OPTARG}
             ;;
         p )
             THREAD=${OPTARG}
             ;;
 	s )
             SPECIES=${OPTARG}
-	    if [[ ! " ${ALLOWED_SPECIES[@]} " =~ " ${SPECIES} " ]]; then
-                echo "Error: Invalid species '${SPECIES}'. Allowed species are: ${ALLOWED_SPECIES[*]}"
-                exit 1
-            fi
-            ;;
-	t )
-            TE_NAME_FILE=$(realpath "${OPTARG}")
             ;;
         \? )
             echo "Invalid option: -$OPTARG" 1>&2
@@ -67,7 +66,7 @@ while getopts ":hi:s:o:t:p:" opt; do
     esac
 done
 
-# 检查是否提供了必要的参数
+# Check parameters
 if [ -z "$INPUT_DIRECTORY" ] || [ -z "$OUTPUT_DIRECTORY" ]; then
     echo "Error: INPUT_DIRECTORY and OUTPUT_DIRECTORY must be provided."
     show_help
@@ -93,49 +92,42 @@ get_time(){
     printf "%-19s" "`date +\"%Y-%m-%d %H:%M:%S\"`"
 }
 
-echo "---------------------------------- 参考数据使用 ${REF_IDX} --------------------------------"
+QC_path=$(dirname "${OUTPUT_DIRECTORY}")/Log
+
+echo " "
+echo "----------------------------- Start scTE analysis---------------------------"
+echo " "
+
+echo "---------------------------------- Reference data ${REF_IDX} --------------------------------"
 
 counter=0
 for FILE in ${INPUT_DIRECTORY}/*.bam; do
     ((counter++))
-    echo "----------------------------- 这是第 ${counter} 个样本~~~~~~~ ---------------------------"
-
-    echo "132 `get_time` scTE ..."
+    echo "`get_time` scTE ..."
 
     cd ${OUTPUT_DIRECTORY}
     SAMPLE=$(basename ${FILE} .bam)
-    $SCTE -i ${FILE} -o ${SAMPLE} -p ${THREAD} -x ${REF_IDX} --hdf5 False -CB False -UMI False
-    cd -
+    echo "----------------------------- Number ${counter} sample: ${SAMPLE} ---------------------------"
+    scTE -i ${FILE} -o ${SAMPLE} -p ${THREAD} -x ${REF_IDX} --hdf5 False -CB False -UMI False > ${QC_path}/${SAMPLE}.scTE.log 2>&1
+    cd - > /dev/null
 done
 
-echo "--------------------------开始合并scTE结果-------------------------------"
-# 合并所有scTE结果
+echo "--------------------------Merge scTE result-------------------------------"
 mkdir ${OUTPUT_DIRECTORY}/merge
 
-# 获取第一个csv文件名
+# The first csv
 first_file=$(ls ${OUTPUT_DIRECTORY}/*.csv | head -n 1)
-# 复制第一个文件
 cp "$first_file" ${OUTPUT_DIRECTORY}/merge/combined.csv
 
-# 循环处理其余csv文件
+# Traverse remaining csv files
 for file in ${OUTPUT_DIRECTORY}/*.csv; do
   if [ "$file" != "$first_file" ]; then
     sed -n '2p' "$file" >> ${OUTPUT_DIRECTORY}/merge/combined.csv
   fi
 done
 
-# 转置
-python ${SCRIPT_DIR}/transpose_csv.py ${OUTPUT_DIRECTORY}/merge/combined.csv ${OUTPUT_DIRECTORY}/merged_scTE.csv
+# Transpose
+$python3_7 ${SCRIPT_DIR}/transpose_csv.py ${OUTPUT_DIRECTORY}/merge/combined.csv ${OUTPUT_DIRECTORY}/merged_scTE.csv
 rm -rf ${OUTPUT_DIRECTORY}/merge
 
-# select TE data
-if [ -n "${TE_NAME_FILE}" ] && [ -f "${TE_NAME_FILE}" ]; then
-  head -n 1 ${OUTPUT_DIRECTORY}/merged_scTE.csv >> ${OUTPUT_DIRECTORY}/TE_tem.csv
-  awk -F ',' 'NR==FNR {te[$1]; next} $1 in te' "${TE_NAME_FILE}" ${OUTPUT_DIRECTORY}/merged_scTE.csv > ${OUTPUT_DIRECTORY}/TE_tem.csv
-  cat ${OUTPUT_DIRECTORY}/TE_tem.csv >> ${OUTPUT_DIRECTORY}/TE_filter.csv
-  rm -rf ${OUTPUT_DIRECTORY}/TE_tem.csv
-fi
-
-
-echo "--------------------------合并完成，可以查看结果了--------------------------"
-
+echo "--------------------------scTE done--------------------------"
