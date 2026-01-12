@@ -6,19 +6,19 @@ import sys
 
 def calculate_gene_signal(bw_path, bed_path):
     """
-    计算每个基因在bigWig文件上的平均信号值
-    
-    参数:
-    bw_path: bigWig文件路径
-    bed_path: BED文件路径
+    Caculate the average signal of each gene in the bigwig file
+
+    Parameters:
+    bw_path: bigWig file 
+    bed_path: BED file
     """
-    # 从BED文件中读取内容
+    # Read from bed file
     with open(bed_path, 'r') as f:
         bed_lines = f.readlines()
     
     bed_data = []
     for line in bed_lines:
-        # 跳过注释行和空行
+        # Skip empty and annotation line
         if line.startswith('#') or line.strip() == '':
             continue
             
@@ -31,40 +31,40 @@ def calculate_gene_signal(bw_path, bed_path):
             start = int(parts[1])
             end = int(parts[2])
         except ValueError:
-            continue  # 跳过无效坐标行
+            continue  # Skip invalid coordinate rows
         transcript = parts[3]
         gene = parts[4]
         #strand = parts[5]
         bed_data.append((chrom, start, end, transcript, gene))
     
-    # 按基因分组，存储所有转录本区间
+    # Store all transcript intervals grouped by gene
     transcript_intervals = defaultdict(list)
     for chrom, start, end, transcript, gene in bed_data:
         transcript_intervals[transcript].append((chrom, start, end,gene))
     
-    # 计算每个基因的信号值
+    # Calculate each gene signal
     results = [];wrong = 0
     try:
         bw = pyBigWig.open(bw_path)
-        bw_chroms = set(bw.chroms().keys())  # 获取bigWig中存在的染色体列表
+        bw_chroms = set(bw.chroms().keys())  # Get the chrom list of the bigWig
         
         for transcript, intervals in transcript_intervals.items():
             total_signal = 0
             total_length = 0
             
             for chrom, start, end,gene in intervals:
-                # 检查染色体是否在bigWig文件中
+                # Check whether the chrom is in bigWig file
                 if chrom not in bw_chroms:
                     continue
                 
-                # 获取区间信号值
+                # Get the interval value
                 try:
                     values = np.array(bw.values(chrom, start, end))
-                    # 移除NaN值
+                    # Remove NaN
                     valid_values = values[~np.isnan(values)]
                     
                     if len(valid_values) > 0:
-                        # 计算该转录本区间的加权信号值
+                        # Calculate the weighted signal value for this transcript interval
                         interval_signal = np.sum(valid_values)
                         interval_length = len(valid_values)
                         
@@ -73,7 +73,7 @@ def calculate_gene_signal(bw_path, bed_path):
                 except Exception as e:
                     wrong += 1
             
-            # 计算该基因的平均信号值
+            # Calculate the average signal of the gene
             if total_length > 0:
                 mean_signal = total_signal / total_length
             else:
@@ -90,21 +90,20 @@ def calculate_gene_signal(bw_path, bed_path):
         if 'bw' in locals() and bw is not None:
             bw.close()
     
-    # 转换为DataFrame并排序
+    # Transfer to DataFrame and sort
     df = pd.DataFrame(results)
     df = df.sort_values(by="transcript")
     print(f'Skip {wrong} transcripts')
     return df
 
-# 示例用法
 if __name__ == "__main__":
     bed_file = sys.argv[1]
     bw_file = sys.argv[2]
     out_file = sys.argv[3]
 
-    # 计算基因信号值
+    # Calculate gene signal
     gene_signal_df = calculate_gene_signal(bw_file, bed_file)
      
-    # 保存到CSV文件
+    # Save
     gene_signal_df.to_csv(out_file, index=False, sep=",")
     print(f"Results saved to {out_file}")
