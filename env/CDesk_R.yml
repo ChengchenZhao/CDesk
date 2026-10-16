@@ -31,10 +31,10 @@ dependencies:
   - bioconductor-clusterprofiler
   - bioconductor-enrichplot
   - bioconductor-org.hs.eg.db
-  - bioconductor-org.rn.eg.db
-  - bioconductor-org.mm.eg.db
-  - bioconductor-org.gg.eg.db
-  - bioconductor-org.ss.eg.db
+    #- bioconductor-org.rn.eg.db
+    #- bioconductor-org.mm.eg.db
+    #- bioconductor-org.gg.eg.db
+    #- bioconductor-org.ss.eg.db
   - r-amap
   - r-randomcolor
   - r-wgcna
@@ -54,9 +54,12 @@ dependencies:
   - r-presto
   - r-harmony
   - bioconductor-regioner
-  - bioconductor-bsgenome.mmusculus.ucsc.mm10
-  - bioconductor-bsgenome.rnorvegicus.ucsc.rn7
+    #- bioconductor-bsgenome.mmusculus.ucsc.mm10
+    #- bioconductor-bsgenome.rnorvegicus.ucsc.rn7
   - bioconductor-bsgenome.hsapiens.ucsc.hg38
-  - bioconductor-bsgenome.ggallus.ucsc.galgal6
-  - bioconductor-bsgenome.rnorvegicus.ucsc.rn7
+    #- bioconductor-bsgenome.ggallus.ucsc.galgal6
+    #- bioconductor-bsgenome.rnorvegicus.ucsc.rn7
   - macs3
+  - pip:
+    - anndata
+    - git+https://github.com/JiekaiLab/scTE.git
