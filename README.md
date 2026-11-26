@@ -2,7 +2,7 @@
 
 # CDesk Multi-Omics Analysis Pipeline
 
-📚 **Documentation**: [**User Guide**](./doc/CDesk.html)
+📚 **Documentation**: [**User Guide**](https://zsifu.github.io/CDesk.html)
 
 </div>
 
