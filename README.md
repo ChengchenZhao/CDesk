@@ -18,58 +18,55 @@ CDesk is an integrated multi-omics analysis sand-box designed for processing dat
 
 ### Download the Docker Image
 
-CDesk and its required tools, Conda environments, R packages, and Python packages are bundled in the Docker image. Download and load the image to use CDesk; there is no need to clone the source code or install the analysis environments separately.
-
-Download the image archive from **【待填写：最新镜像下载链接】**. The archive filename is **【待填写：镜像压缩包文件名】**.
+CDesk and its required tools, Conda environments, R packages, and Python packages are bundled in the Docker image. Download and load the image **【待填写：最新镜像下载链接】** to use CDesk.
 
 ### Load and Start the Image
 
 #### Linux
 
-Install Docker Engine, then load the downloaded archive:
+Install Docker Engine, then load the downloaded archive(this step will take a few minutes):
 
 ~~~bash
-docker load -i "【镜像压缩包的绝对路径】"
-~~~
-
-The load command prints the image name and tag. Use that value below. Create a working directory on the host for your input files, sample information tables, configuration, and results, then start the container:
-
-~~~bash
-docker run -it --name cdesk \
-  -v "【宿主机工作目录的绝对路径】:/work" \
-  -w /work \
-  "【实际镜像名称:标签】" \
-  /bin/bash
-~~~
-
-The host working directory is available as /work inside the container. Files written under /work are saved in the host directory. Use container-visible paths in commands and input tables, for example /work/data/sample_R1.fastq.gz. Keep the image's /CDesk directory intact; do not mount your working directory over it.
-
-#### Windows
-
-Install WSL 2 with a Linux distribution such as Ubuntu, and install Docker Desktop. In Docker Desktop, enable the WSL 2 engine and WSL integration for that distribution. Run the following commands in the **WSL terminal**, not Windows Command Prompt or PowerShell.
-
-Load the downloaded image. A Windows path such as F:\CDesk\image.tar.gz is available in WSL as /mnt/f/CDesk/image.tar.gz:
-
-~~~bash
-docker load -i "【WSL 中镜像压缩包的绝对路径】"
+docker load -i "[path to the archive]"
 ~~~
 
 Start the container with a working directory mounted at /work:
 
 ~~~bash
-docker run -it --name cdesk \
-  -v "【WSL 中工作目录的绝对路径，例如 /mnt/f/git/CDesk】:/work" \
-  -w /work \
-  "【实际镜像名称:标签】" \
+docker run -it --name [container name] \
+  -v "[working directory of computer(host)]:/[working directory name of container]" \
+  -w /[working directory name of container] \
+  "cdesk:v7" \
   /bin/bash
 ~~~
 
-For example, a file at F:\git\CDesk\my_config.json on Windows is /mnt/f/git/CDesk/my_config.json in WSL and /work/my_config.json inside this container.
+Keep the image's /CDesk directory intact; do not mount your working directory over it.
+
+#### Windows
+
+Install WSL 2 with a Linux distribution such as Ubuntu, and install Docker Desktop. In Docker Desktop, enable the WSL 2 engine and WSL integration for that distribution. Run the following commands in the **WSL terminal**.
+
+Load the downloaded image. 
+
+~~~bash
+docker load -i "[path to the archive]"
+~~~
+
+Start the container with a working directory mounted at /work:
+
+~~~bash
+docker run -it --name [container name] \
+  -v "[working directory of computer(host)]:/[working directory name of container]" \
+  -w /[working directory name of container] \
+  "cdesk:v7" \
+  /bin/bash
+~~~
+
 
 After exiting the container, Linux and Windows/WSL users can return to the same container with:
 
 ~~~bash
-docker start -ai cdesk
+docker start -ai [container name]
 ~~~
 
 ### After Installation, You Should Be Able to Run CDesk Now
@@ -83,22 +80,30 @@ CDesk -h
 If the CDesk help is displayed, the installation is successful. The available modules include:
 
 ~~~text
+usage: CDesk [-h] {tools,bulkRNA,scRNA,ATAC,ChIPseqCUTTag,HiC} ...
+
 CDesk multiomics pipeline
 
-{tools,bulkRNA,scRNA,ATAC,ChIPseqCUTTag,HiC}
-  tools           Some other tools
-  bulkRNA         bulkRNA-seq pipeline
-  scRNA           scRNA pipeline
-  ATAC            ATAC pipeline
-  ChIPseqCUTTag    ChIPseq&CUTTag pipeline
-  HiC             HiC pipeline
+positional arguments:
+  {tools,bulkRNA,scRNA,ATAC,ChIPseqCUTTag,HiC}
+                        Choose an omic to run the script
+    tools               Some other tools
+    bulkRNA             bulkRNA-seq pipeline
+    scRNA               scRNA pipeline
+    ATAC                ATAC pipeline
+    ChIPseqCUTTag       ChIPseq&CUTTag pipeline
+    HiC                 HiC pipeline
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       The configuration files
 ~~~
 
 ### Prepare the Data and Write the Configuration File
 
-You need to prepare reference data for the species of interest and specify the corresponding file paths in the config.json configuration file. This file stores paths to genomic data, annotation files, and additional software installations.
+Prepare reference data for the species of interest and specify the corresponding file paths in the config.json configuration file. This file stores paths to genomic data, annotation files, and additional software installations.
 
-The example below is from the current branch's config.json. **【待核对并替换：最新镜像内的实际 config.json；本示例尚未完成镜像内核对】**. You can customize it to support additional species or data types. The reference data and tools needed depend on the task you intend to run.
+The example below is from the current config.json recording the reference data of the Arabidopsis thaliana. You can customize it to support additional species or data types. The reference data and tools needed depend on the task you intend to run.
 
 <details>
 <summary>An example of the configuration file</summary>
@@ -171,30 +176,16 @@ Use consistent chromosome names and a matching genome assembly across reference 
 
 #### Use a Configuration File Stored Outside the Image
 
-You can create and edit my_config.json in the host working directory without modifying the image. Copy the complete configuration example above, retain the software and conda_env paths for the image you are using, and edit the reference data entries as needed.
+You can create and edit customized config.json in the host working directory without modifying the image. Copy the complete configuration example above, retain the software and conda_env paths for the image you are using, and edit the reference data entries as needed.
 
-With the /work mount shown above, the host configuration file is available inside the container as **/work/my_config.json**. CDesk uses its bundled config.json by default; select your external file explicitly with **--config before the module name**:
+The host configuration file is available inside the container . CDesk uses its bundled config.json by default; select your external file explicitly with **--config before the module name**:
 
 ~~~bash
 CDesk \
-  --config /work/my_config.json \
+  --config [path to customized config.json] \
   ATAC preprocess \
-  --input /work/samples.csv \
-  --output /work/result \
-  --species TAIR10
+  --input [path to samples.csv] \
+  --output [output directory] \
+  --species mm10
 ~~~
 
-For the Windows example, the host file F:\git\CDesk\my_config.json is used through its mounted container path /work/my_config.json, not through the Windows path.
-
-All file paths in my_config.json must be accessible **inside the container**. For reference data stored outside the mounted working directory, add a separate mount when creating the container, for example:
-
-~~~bash
-docker run -it --name cdesk_external_ref \
-  -v "【宿主机工作目录的绝对路径；Windows 使用 WSL 路径】:/work" \
-  -v "【宿主机参考数据目录的绝对路径；Windows 使用 WSL 路径】:/reference:ro" \
-  -w /work \
-  "【实际镜像名称:标签】" \
-  /bin/bash
-~~~
-
-Use /reference/... paths for those reference resources in my_config.json. The example command above still selects the configuration with --config /work/my_config.json.
