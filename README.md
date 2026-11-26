@@ -22,7 +22,21 @@ Use a pre-built CDesk Docker image for routine analysis. The image provides the 
 
 For the code under development in this branch, use **the development source inside a compatible CDesk image** as described in section 3. Loading an image does not update its bundled CDesk code to this branch.
 
-**Image release status:** the previous README linked to [Zenodo](https://doi.org/10.5281/zenodo.19709171), but compatibility of that archive with the current development branch has not been established. A current release needs to identify the download URL, archive filename and SHA256 checksum, loaded image name and tag (or registry digest), supported architecture, bundled reference data, and corresponding code commit. Do not assume that the old archive name or image tag identifies the current branch. The image names in the commands below are placeholders.
+**Information to complete before release:** replace every item marked with **【】** before publishing runnable examples. Maintainers should complete the release information below; users should replace host-path placeholders with their own existing absolute paths. The configuration snapshot in section 4 contains the branch's actual defaults, so its paths are not placeholders.
+
+| Release information | Value to complete |
+| --- | --- |
+| Image download URL | 【待填写：与当前版本配套的镜像下载链接】 |
+| Image archive filename | 【待填写：镜像压缩包的实际文件名】 |
+| Archive SHA256 | 【待填写：该镜像压缩包的完整 SHA256 校验值】 |
+| Loaded image name and tag | 【待填写：docker load 后的实际镜像名称:标签】 |
+| Registry digest, if distributed through a registry | 【待填写：镜像仓库 digest；不适用则填写 N/A】 |
+| Supported CPU architecture | 【待填写：实际验证支持的架构，例如 linux/amd64】 |
+| Bundled reference resources | 【待填写：镜像内置的参考基因组、注释及索引；未内置则明确说明】 |
+| Matching source revision | 【待填写：与镜像配套的代码完整 commit SHA 或发布 tag】 |
+| Compatibility validation | 【待填写：该镜像与本开发分支完成兼容性验证的代码 commit 及验证范围】 |
+
+The previous README linked to [Zenodo](https://doi.org/10.5281/zenodo.19709171), but compatibility of that archive with the current development branch has not been established. Replace the download information above with the verified release details. Do not assume that the old archive name or image tag identifies the current branch.
 
 Installing directly from Conda environment files is an advanced alternative (section 6). The environment definitions alone do not include every separately distributed tool or reference dataset.
 
@@ -34,21 +48,21 @@ After obtaining the appropriate image archive and its published checksum, verify
 
 ~~~bash
 # Linux; compare the output with the checksum published for this exact archive.
-sha256sum /absolute/path/to/cdesk-image.tar.gz
+sha256sum "【镜像压缩包的绝对路径】"
 
-# On macOS, use: shasum -a 256 /absolute/path/to/cdesk-image.tar.gz
+# On macOS, use: shasum -a 256 "【镜像压缩包的绝对路径】"
 # Docker can load a gzip-compressed image archive directly.
-docker load -i /absolute/path/to/cdesk-image.tar.gz
+docker load -i "【镜像压缩包的绝对路径】"
 ~~~
 
 Use the image name and tag printed by the load command. The value below is an example placeholder, not a published image name.
 
 ~~~bash
-CDESK_IMAGE='IMAGE_NAME:TAG'
+CDESK_IMAGE='【实际镜像名称:标签】'
 
 docker run --rm -it \
-  --mount type=bind,src=/absolute/path/to/input,dst=/data,readonly \
-  --mount type=bind,src=/absolute/path/to/results,dst=/results \
+  --mount "type=bind,src=【宿主机输入目录的绝对路径】,dst=/data,readonly" \
+  --mount "type=bind,src=【宿主机结果目录的绝对路径】,dst=/results" \
   --workdir /results \
   "$CDESK_IMAGE" \
   /bin/bash
@@ -89,12 +103,12 @@ git rev-parse HEAD
 Mount the checkout at a location separate from the image's bundled code and references:
 
 ~~~bash
-CDESK_IMAGE='IMAGE_NAME:TAG'
+CDESK_IMAGE='【实际镜像名称:标签】'
 
 docker run --rm -it \
-  --mount type=bind,src=/absolute/path/to/CDesk,dst=/opt/cdesk-dev,readonly \
-  --mount type=bind,src=/absolute/path/to/input,dst=/data,readonly \
-  --mount type=bind,src=/absolute/path/to/results,dst=/results \
+  --mount "type=bind,src=【宿主机源码目录的绝对路径】,dst=/opt/cdesk-dev,readonly" \
+  --mount "type=bind,src=【宿主机输入目录的绝对路径】,dst=/data,readonly" \
+  --mount "type=bind,src=【宿主机结果目录的绝对路径】,dst=/results" \
   --workdir /results \
   "$CDESK_IMAGE" \
   /bin/bash
@@ -117,10 +131,10 @@ python3 /opt/cdesk-dev/CDesk \
 For an analysis, keep the same explicit entry point and place --config **before** the module name:
 
 ~~~text
-python3 /opt/cdesk-dev/CDesk --config /results/config.json MODULE COMMAND [arguments]
+python3 /opt/cdesk-dev/CDesk --config /results/config.json 【分析模块】 【子命令】 【该命令的参数】
 ~~~
 
-Replace MODULE, COMMAND, and [arguments] with a command documented in the user guide. Running the image's bare CDesk command would normally select its bundled copy instead of /opt/cdesk-dev/CDesk.
+Replace 【分析模块】, 【子命令】, and 【该命令的参数】 with a command documented in the user guide. Running the image's bare CDesk command would normally select its bundled copy instead of /opt/cdesk-dev/CDesk.
 
 The checked-out source and the image's dependencies must be compatible. This procedure selects the branch code; it does not install or repair software dependencies. Use an image release validated for the intended source revision.
 
@@ -244,8 +258,8 @@ Install tools not supplied by those environments as required by your workflow, i
 You can invoke the entry script without a system-wide installation:
 
 ~~~bash
-python3 /absolute/path/to/CDesk/CDesk \
-  --config /absolute/path/to/config.local.json \
+python3 "【本机源码目录的绝对路径】/CDesk" \
+  --config "【本机配置文件的绝对路径】" \
   -h
 ~~~
 
@@ -253,10 +267,10 @@ Alternatively, expose the executable through your user-local bin directory:
 
 ~~~bash
 mkdir -p "$HOME/.local/bin"
-ln -s /absolute/path/to/CDesk/CDesk "$HOME/.local/bin/CDesk"
+ln -s "【本机源码目录的绝对路径】/CDesk" "$HOME/.local/bin/CDesk"
 export PATH="$HOME/.local/bin:$PATH"
 
-CDesk --config /absolute/path/to/config.local.json -h
+CDesk --config "【本机配置文件的绝对路径】" -h
 ~~~
 
 Add the PATH export to your shell configuration if you want it to persist. Complete the workflow-specific verification in section 5 before relying on a native installation.
