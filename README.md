@@ -2,7 +2,7 @@
 
 # CDesk Multi-Omics Analysis Pipeline
 
-📚 **Documentation**: [**User Guide**](https://JerryLin-bio.github.io/CDesk.github.io/CDesk.html)
+📚 **Documentation**: [**User Guide**](./doc/images/CDesk.html)
 
 </div>
 
