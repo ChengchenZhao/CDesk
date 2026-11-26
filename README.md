@@ -30,7 +30,7 @@ Install Docker Engine, then load the downloaded archive(this step will take a fe
 docker load -i "[path to the archive]"
 ~~~
 
-Start the container with a working directory mounted at /work:
+Start the container with a working directory:
 
 ~~~bash
 docker run -it --name [container name] \
@@ -52,7 +52,7 @@ Load the downloaded image.
 docker load -i "[path to the archive]"
 ~~~
 
-Start the container with a working directory mounted at /work:
+Start the container with a working directory:
 
 ~~~bash
 docker run -it --name [container name] \
