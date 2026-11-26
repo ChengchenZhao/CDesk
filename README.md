@@ -16,144 +16,92 @@ CDesk is an integrated multi-omics analysis sand-box designed for processing dat
 
 ## Installation
 
-### 1. Choose an installation method
+### Download the Docker Image
 
-Use a pre-built CDesk Docker image for routine analysis. The image provides the software environment; input data and analysis results are stored in directories mounted from the host. Linux users can use Docker Engine. Windows and macOS users can use Docker Desktop with Linux containers, provided that the image supports their CPU architecture.
+CDesk and its required tools, Conda environments, R packages, and Python packages are bundled in the Docker image. Download and load the image to use CDesk; there is no need to clone the source code or install the analysis environments separately.
 
-For the code under development in this branch, use **the development source inside a compatible CDesk image** as described in section 3. Loading an image does not update its bundled CDesk code to this branch.
+Download the image archive from **【待填写：最新镜像下载链接】**. The archive filename is **【待填写：镜像压缩包文件名】**.
 
-**Information to complete before release:** replace every item marked with **【】** before publishing runnable examples. Maintainers should complete the release information below; users should replace host-path placeholders with their own existing absolute paths. The configuration snapshot in section 4 contains the branch's actual defaults, so its paths are not placeholders.
+### Load and Start the Image
 
-| Release information | Value to complete |
-| --- | --- |
-| Image download URL | 【待填写：与当前版本配套的镜像下载链接】 |
-| Image archive filename | 【待填写：镜像压缩包的实际文件名】 |
-| Archive SHA256 | 【待填写：该镜像压缩包的完整 SHA256 校验值】 |
-| Loaded image name and tag | 【待填写：docker load 后的实际镜像名称:标签】 |
-| Registry digest, if distributed through a registry | 【待填写：镜像仓库 digest；不适用则填写 N/A】 |
-| Supported CPU architecture | 【待填写：实际验证支持的架构，例如 linux/amd64】 |
-| Bundled reference resources | 【待填写：镜像内置的参考基因组、注释及索引；未内置则明确说明】 |
-| Matching source revision | 【待填写：与镜像配套的代码完整 commit SHA 或发布 tag】 |
-| Compatibility validation | 【待填写：该镜像与本开发分支完成兼容性验证的代码 commit 及验证范围】 |
+#### Linux
 
-The previous README linked to [Zenodo](https://doi.org/10.5281/zenodo.19709171), but compatibility of that archive with the current development branch has not been established. Replace the download information above with the verified release details. Do not assume that the old archive name or image tag identifies the current branch.
-
-Installing directly from Conda environment files is an advanced alternative (section 6). The environment definitions alone do not include every separately distributed tool or reference dataset.
-
-### 2. Run a pre-built image
-
-Install Docker and prepare host directories for the input data and output results. Replace every example path below with an existing absolute path on your machine.
-
-After obtaining the appropriate image archive and its published checksum, verify the archive and load it:
+Install Docker Engine, then load the downloaded archive:
 
 ~~~bash
-# Linux; compare the output with the checksum published for this exact archive.
-sha256sum "【镜像压缩包的绝对路径】"
-
-# On macOS, use: shasum -a 256 "【镜像压缩包的绝对路径】"
-# Docker can load a gzip-compressed image archive directly.
 docker load -i "【镜像压缩包的绝对路径】"
 ~~~
 
-Use the image name and tag printed by the load command. The value below is an example placeholder, not a published image name.
+The load command prints the image name and tag. Use that value below. Create a working directory on the host for your input files, sample information tables, configuration, and results, then start the container:
 
 ~~~bash
-CDESK_IMAGE='【实际镜像名称:标签】'
-
-docker run --rm -it \
-  --mount "type=bind,src=【宿主机输入目录的绝对路径】,dst=/data,readonly" \
-  --mount "type=bind,src=【宿主机结果目录的绝对路径】,dst=/results" \
-  --workdir /results \
-  "$CDESK_IMAGE" \
+docker run -it --name cdesk \
+  -v "【宿主机工作目录的绝对路径】:/work" \
+  -w /work \
+  "【实际镜像名称:标签】" \
   /bin/bash
 ~~~
 
-Inside the container:
+The host working directory is available as /work inside the container. Files written under /work are saved in the host directory. Use container-visible paths in commands and input tables, for example /work/data/sample_R1.fastq.gz. Keep the image's /CDesk directory intact; do not mount your working directory over it.
+
+#### Windows
+
+Install WSL 2 with a Linux distribution such as Ubuntu, and install Docker Desktop. In Docker Desktop, enable the WSL 2 engine and WSL integration for that distribution. Run the following commands in the **WSL terminal**, not Windows Command Prompt or PowerShell.
+
+Load the downloaded image. A Windows path such as F:\CDesk\image.tar.gz is available in WSL as /mnt/f/CDesk/image.tar.gz:
+
+~~~bash
+docker load -i "【WSL 中镜像压缩包的绝对路径】"
+~~~
+
+Start the container with a working directory mounted at /work:
+
+~~~bash
+docker run -it --name cdesk \
+  -v "【WSL 中工作目录的绝对路径，例如 /mnt/f/git/CDesk】:/work" \
+  -w /work \
+  "【实际镜像名称:标签】" \
+  /bin/bash
+~~~
+
+For example, a file at F:\git\CDesk\my_config.json on Windows is /mnt/f/git/CDesk/my_config.json in WSL and /work/my_config.json inside this container.
+
+After exiting the container, Linux and Windows/WSL users can return to the same container with:
+
+~~~bash
+docker start -ai cdesk
+~~~
+
+### After Installation, You Should Be Able to Run CDesk Now
+
+Inside the container, run:
 
 ~~~bash
 CDesk -h
 ~~~
 
-This command uses the CDesk code bundled in the image. To use this development branch, follow section 3 instead.
-
-- Input files are available under **/data** in the container. Use these container-visible paths in sample information CSV files, for example, /data/sample_R1.fastq.gz.
-- Write analysis outputs under **/results** so that they remain available on the host after the container exits.
-- Do not mount a host source directory over **/CDesk**. It would hide the image's existing files at that location, including any reference data under /CDesk/TAIR.
-- If additional reference data are needed, mount their host directory separately, for example at /reference with a read-only bind mount, and use /reference paths in the configuration.
-- Host directories used with --mount must already exist. On a cluster, run analysis on an allocated compute node using the container runtime permitted by the cluster.
-
-### 3. Run this development branch inside an image
-
-Get the source on the host:
-
-~~~bash
-git clone --branch Zsifu_edit2026 --single-branch \
-  https://github.com/ChengchenZhao/CDesk.git
-cd CDesk
-
-# Several shell scripts are invoked directly by the dispatcher.
-# Set execution permissions in this local checkout before mounting it read-only.
-chmod +x CDesk
-find src -type f -name '*.sh' -exec chmod +x {} \;
-
-# Record the exact source revision used for an analysis.
-git rev-parse HEAD
-~~~
-
-Mount the checkout at a location separate from the image's bundled code and references:
-
-~~~bash
-CDESK_IMAGE='【实际镜像名称:标签】'
-
-docker run --rm -it \
-  --mount "type=bind,src=【宿主机源码目录的绝对路径】,dst=/opt/cdesk-dev,readonly" \
-  --mount "type=bind,src=【宿主机输入目录的绝对路径】,dst=/data,readonly" \
-  --mount "type=bind,src=【宿主机结果目录的绝对路径】,dst=/results" \
-  --workdir /results \
-  "$CDESK_IMAGE" \
-  /bin/bash
-~~~
-
-Inside the container, copy the branch configuration to the results directory. Edit that copy if the image's tool, environment, or reference paths differ:
-
-~~~bash
-cp /opt/cdesk-dev/config.json /results/config.json
-
-python3 /opt/cdesk-dev/CDesk \
-  --config /results/config.json \
-  -h
-
-python3 /opt/cdesk-dev/CDesk \
-  --config /results/config.json \
-  ATAC preprocess -h
-~~~
-
-For an analysis, keep the same explicit entry point and place --config **before** the module name:
+If the CDesk help is displayed, the installation is successful. The available modules include:
 
 ~~~text
-python3 /opt/cdesk-dev/CDesk --config /results/config.json 【分析模块】 【子命令】 【该命令的参数】
+CDesk multiomics pipeline
+
+{tools,bulkRNA,scRNA,ATAC,ChIPseqCUTTag,HiC}
+  tools           Some other tools
+  bulkRNA         bulkRNA-seq pipeline
+  scRNA           scRNA pipeline
+  ATAC            ATAC pipeline
+  ChIPseqCUTTag    ChIPseq&CUTTag pipeline
+  HiC             HiC pipeline
 ~~~
 
-Replace 【分析模块】, 【子命令】, and 【该命令的参数】 with a command documented in the user guide. Running the image's bare CDesk command would normally select its bundled copy instead of /opt/cdesk-dev/CDesk.
+### Prepare the Data and Write the Configuration File
 
-The checked-out source and the image's dependencies must be compatible. This procedure selects the branch code; it does not install or repair software dependencies. Use an image release validated for the intended source revision.
+You need to prepare reference data for the species of interest and specify the corresponding file paths in the config.json configuration file. This file stores paths to genomic data, annotation files, and additional software installations.
 
-### 4. Configure software and reference data
-
-CDesk reads config.json next to its resolved entry script by default. Use --config to select a different file. The configuration has three sections:
-
-| Section | Purpose |
-| --- | --- |
-| software | Paths to separately installed tools and the Celescope executable directory. |
-| conda_env | Root directories of the four main CDesk environments; do not append /bin. |
-| data | Species/reference keys and paths to their genome, annotation, and index resources. |
-
-The [config.json in this branch](./config.json) uses container paths under /opt/conda, /root, and /CDesk/TAIR. Those paths must exist **inside the running container**. They are not host installation paths.
-
-The default reference key is **TAIR10**, which points to resources under **/CDesk/TAIR/**. Use -s TAIR10 for commands that accept the -s species option, or the species option shown by the command's help. This configuration does not define a TAIR10_chr key. For another reference, add its own data entry and use that entry's exact key.
+The example below is from the current branch's config.json. **【待核对并替换：最新镜像内的实际 config.json；本示例尚未完成镜像内核对】**. You can customize it to support additional species or data types. The reference data and tools needed depend on the task you intend to run.
 
 <details>
-<summary>Default configuration for this branch</summary>
+<summary>An example of the configuration file</summary>
 
 ~~~json
 {
@@ -190,87 +138,63 @@ The default reference key is **TAIR10**, which points to resources under **/CDes
     }
   }
 }
+
 ~~~
 
 </details>
 
-Keep the software entries required by the workflows you intend to run. For example, the Cell Ranger preprocessing implementation invokes software.cellranger directly, even when Cell Ranger is installed inside the container. A celescope_path value is a directory containing the Celescope executables; juicer_tools_jar is the JAR file path.
+- **software**: Paths to tools installed in the image. Keep the entries required by your workflows.
+- **conda_env**: Paths to the CDesk environments inside the image.
+- **data**: Reference data configurations for different species. The TAIR10 key corresponds to --species TAIR10.
 
-For native installations, replace all container-specific paths with the actual local installation paths. CDesk searches for environments named CDesk, CDesk_py3.7, CDesk_py2.7, and CDesk_R using Conda, then Mamba, before falling back to paths in conda_env. Thus a detected environment with a matching name takes precedence over its configured path.
+The reference data fields are described below.
 
-Reference fields depend on the selected workflow:
+| Field | Meaning and Purpose | What to Specify |
+|---|---|---|
+| `hisat2_index` | HISAT2 alignment index used by workflows such as bulk RNA-seq to align sequencing reads to the reference genome | The shared prefix of the index files, not a directory or a FASTA file |
+| `refseq_gtf` | GTF gene annotation containing the coordinates of genes, transcripts, exons, and other features; used for RNA analysis and for locating genes in `accessbility --mode gene` | `.gtf` file |
+| `refseq_bed` | BED annotation of transcript structures, read as an RSeQC annotation during bulk RNA preprocessing for read distribution quality control | An annotation BED file that meets the tool's requirements, typically BED12; an arbitrary three-column peak BED file cannot be used as a substitute |
+| `chromInfo` | Chromosome size table containing chromosome names and lengths; used for signal statistics, BigWig conversion, and related tasks | A text file, typically with two columns |
+| `fasta` | Reference genome sequences containing the DNA nucleotide sequences of chromosomes | `.fa`, `.fasta`, or `.fna` file |
+| `tf_file` | Table of transcription factor genes, used by ATAC dynamic analysis to identify transcription factors among associated genes | The current code reads a tab-delimited table and requires a column named `Symbol` |
+| `promoter_file` | Table of promoter regions, used to calculate promoter signals and associate ATAC regions with genes | The relevant current code requires at least five columns: chromosome, start, end, transcript, and gene |
+| `TE_idx` | Index for transposable element analysis; the bulk RNA TE analysis workflow passes it to `scTE -x` | An index file recognized by scTE, not a HISAT2 or Bowtie2 index |
+| `scRef10x` | Cell Ranger reference database used for preprocessing 10x single-cell RNA-seq data | A prebuilt Cell Ranger reference directory, not a single FASTA file |
+| `effective_genome_size` | Effective genome size used in MACS peak-calling calculations for ATAC/ChIPseqCUTTag | A numeric value or another value supported by the tool, not a file path |
+| `gff3` | GFF3 gene annotation read by the current alternative splicing visualization script | `.gff3` file; changing a GTF file's extension does not convert it to GFF3 |
+| `refgenes` | Reference gene annotation used by DrSeq; the source code passes it to DrSeq's `-g` argument | A reference annotation file that meets DrSeq's requirements, not a simple single-column list of gene names |
+| `bowtie2_mapindex` | Bowtie2 alignment index used by workflows such as ATAC, ChIPseqCUTTag, and DrSeq | The shared prefix of the index files |
+| `singleron_mapindex` | Singleron/CeleScope reference database; the source code passes it to `--genomeDir` | A reference directory prepared for the corresponding tool |
+| `dnbc_mapindex` | DNBelab C Series/dnbc4tools reference database; the source code passes it to `--genomeDir` | A reference directory prepared for the corresponding tool |
 
-| Field | Resource |
-| --- | --- |
-| hisat2_index | HISAT2 index prefix, not just its parent directory. |
-| refseq_gtf | Gene annotation in GTF format. |
-| refseq_bed | Gene annotation in BED format. |
-| chromInfo | Chromosome names and lengths. |
-| fasta | Reference genome FASTA. |
-| tf_file | Transcription factor list. |
-| promoter_file | Promoter regions in BED format. |
-| TE_idx | scTE index. |
-| scRef10x | Cell Ranger reference directory. |
-| effective_genome_size | Effective genome size accepted by the relevant workflow. |
-| gff3 | Gene annotation in GFF/GFF3 format. |
-| refgenes | Gene annotation resource used by the DrSeq workflow. |
-| bowtie2_mapindex | Bowtie2 index prefix. |
-| singleron_mapindex | Singleron/Celescope reference index directory. |
-| dnbc_mapindex | DNBC4Tools reference index directory. |
+Use consistent chromosome names and a matching genome assembly across reference sequences, annotations, indices, and analysis inputs.
 
-Use a consistent genome assembly and chromosome naming scheme across FASTA, annotations, indices, BAM, BigWig, BED, and Hi-C resources. A reference key such as TAIR10 is a configuration label; it does not convert chromosome names or make resources from different annotations interchangeable. Cloning this repository does not download the reference datasets or build their indices.
+#### Use a Configuration File Stored Outside the Image
 
-### 5. Verify the installation
+You can create and edit my_config.json in the host working directory without modifying the image. Copy the complete configuration example above, retain the software and conda_env paths for the image you are using, and edit the reference data entries as needed.
 
-Run the checks in the environment where the analysis will execute. Use the explicit branch entry point from section 3 when testing development code.
-
-~~~bash
-CDesk -h
-CDesk ATAC preprocess -h
-CDesk HiC preprocess -h
-~~~
-
-Help output confirms that the command-line interface can be parsed; it does **not** validate all dependencies or reference files. In the current entry script, help exits before the runtime environment initialization, although configuration loading and module imports occur before help is displayed.
-
-Before starting a workflow, confirm its configured executables, environment directories, and reference files exist, then run a documented example with suitable input data. Save the selected image identifier, source commit (for development runs), configuration, sample/group tables, command, and log with the analysis results. A successful help command is not evidence that all five analysis modules have passed.
-
-### 6. Advanced: install from source with Conda/Mamba
-
-Use this route when you need to maintain the software environment yourself. The commands below describe the repository layout; they are not a guarantee that the current environment files resolve on every platform or reproduce a released image. Use a compatible Linux system and consult the individual tools' platform requirements.
-
-Clone the branch as in section 3, then run the following from the repository root:
+With the /work mount shown above, the host configuration file is available inside the container as **/work/my_config.json**. CDesk uses its bundled config.json by default; select your external file explicitly with **--config before the module name**:
 
 ~~~bash
-# Run from env/ so the pip_requirements.txt reference in CDesk_py3.7.yml resolves.
-cd env
-mamba env create -f CDesk.yml
-mamba env create -f CDesk_py3.7.yml
-mamba env create -f CDesk_py2.7.yml
-mamba env create -f CDesk_R.yml
-cd ..
-
-chmod +x CDesk
-find src -type f -name '*.sh' -exec chmod +x {} \;
+CDesk \
+  --config /work/my_config.json \
+  ATAC preprocess \
+  --input /work/samples.csv \
+  --output /work/result \
+  --species TAIR10
 ~~~
 
-Install tools not supplied by those environments as required by your workflow, including Cell Ranger, DrSeq, DNBC4Tools, Celescope, or the Juicer tools JAR. Obtain and build the relevant reference resources, copy config.json to a local configuration file, and replace its container paths with your actual paths.
+For the Windows example, the host file F:\git\CDesk\my_config.json is used through its mounted container path /work/my_config.json, not through the Windows path.
 
-You can invoke the entry script without a system-wide installation:
+All file paths in my_config.json must be accessible **inside the container**. For reference data stored outside the mounted working directory, add a separate mount when creating the container, for example:
 
 ~~~bash
-python3 "【本机源码目录的绝对路径】/CDesk" \
-  --config "【本机配置文件的绝对路径】" \
-  -h
+docker run -it --name cdesk_external_ref \
+  -v "【宿主机工作目录的绝对路径；Windows 使用 WSL 路径】:/work" \
+  -v "【宿主机参考数据目录的绝对路径；Windows 使用 WSL 路径】:/reference:ro" \
+  -w /work \
+  "【实际镜像名称:标签】" \
+  /bin/bash
 ~~~
 
-Alternatively, expose the executable through your user-local bin directory:
-
-~~~bash
-mkdir -p "$HOME/.local/bin"
-ln -s "【本机源码目录的绝对路径】/CDesk" "$HOME/.local/bin/CDesk"
-export PATH="$HOME/.local/bin:$PATH"
-
-CDesk --config "【本机配置文件的绝对路径】" -h
-~~~
-
-Add the PATH export to your shell configuration if you want it to persist. Complete the workflow-specific verification in section 5 before relying on a native installation.
+Use /reference/... paths for those reference resources in my_config.json. The example command above still selects the configuration with --config /work/my_config.json.
