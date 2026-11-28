@@ -36,7 +36,7 @@ Start the container with a working directory:
 docker run -it --name [container name] \
   -v "[working directory of computer(host)]:/[working directory name of container]" \
   -w /[working directory name of container] \
-  "cdesk:v7" \
+  "cdesk:v8" \
   /bin/bash
 ~~~
 
@@ -58,7 +58,7 @@ Start the container with a working directory:
 docker run -it --name [container name] \
   -v "[working directory of computer(host)]:/[working directory name of container]" \
   -w /[working directory name of container] \
-  "cdesk:v7" \
+  "cdesk:v8" \
   /bin/bash
 ~~~
 
@@ -74,7 +74,7 @@ docker start -ai [container name]
 Inside the container, run:
 
 ~~~bash
-CDesk -h
+/CDesk/CDesk/CDesk -h
 ~~~
 
 If the CDesk help is displayed, the installation is successful. The available modules include:
