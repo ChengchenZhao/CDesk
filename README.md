@@ -181,7 +181,7 @@ You can create and edit customized config.json in the host working directory wit
 The host configuration file is available inside the container . CDesk uses its bundled config.json by default; select your external file explicitly with **--config before the module name**:
 
 ~~~bash
-CDesk \
+/CDesk/CDesk/CDesk \
   --config [path to customized config.json] \
   ATAC preprocess \
   --input [path to samples.csv] \
